@@ -58,6 +58,9 @@ async function main() {
     const api = await fetch(`${baseUrl}/api/analytics/responses`, { headers });
     const payload = await api.json();
     const survey = await fetch(`${baseUrl}/`);
+    const font = await fetch(`${baseUrl}/assets/fonts/manrope-cyrillic.woff2`);
+    const fontBytes = (await font.arrayBuffer()).byteLength;
+    const contentSecurityPolicy = survey.headers.get("content-security-policy") || "";
 
     const result = {
       unauthorized: unauthorized.status,
@@ -66,8 +69,23 @@ async function main() {
       records: payload.total,
       testRecords: payload.records?.filter((record) => record.isTest).length,
       survey: survey.status,
+      font: font.status,
+      fontType: font.headers.get("content-type"),
+      fontBytes,
+      fontPolicy: contentSecurityPolicy.includes("font-src 'self'"),
     };
-    if (result.unauthorized !== 401 || result.dashboard !== 200 || result.api !== 200 || result.records !== 50 || result.testRecords !== 50 || result.survey !== 200) {
+    if (
+      result.unauthorized !== 401
+      || result.dashboard !== 200
+      || result.api !== 200
+      || result.records !== 50
+      || result.testRecords !== 50
+      || result.survey !== 200
+      || result.font !== 200
+      || result.fontType !== "font/woff2"
+      || result.fontBytes < 10_000
+      || !result.fontPolicy
+    ) {
       throw new Error(`Smoke test failed: ${JSON.stringify(result)}`);
     }
     console.log(JSON.stringify({ ok: true, ...result }));

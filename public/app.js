@@ -8,6 +8,10 @@
   const progressBar = document.getElementById("progress-bar");
   const progressValue = document.getElementById("progress-value");
   const stepLabel = document.getElementById("step-label");
+  const progressTrack = document.getElementById("progress-track");
+  const saveStatus = document.getElementById("save-status");
+  const railIndex = document.getElementById("rail-index");
+  const railTitle = document.getElementById("rail-title");
 
   const option = (value, label, extras = {}) => ({ value: String(value), label, ...extras });
 
@@ -643,7 +647,18 @@
   }
 
   function setSaveStatus(kind, label) {
-    // Autosave remains active, but its service indicator is intentionally hidden from respondents.
+    saveStatus.dataset.state = kind;
+    if (kind === "offline" || kind === "error") {
+      saveStatus.dataset.hadIssue = "true";
+      saveStatus.textContent = label;
+      return;
+    }
+    if (kind === "saved" && saveStatus.dataset.hadIssue === "true") {
+      delete saveStatus.dataset.hadIssue;
+      saveStatus.textContent = label;
+      return;
+    }
+    saveStatus.textContent = "";
   }
 
   function snapshot() {
@@ -836,6 +851,64 @@
     return [...before, ...after].some((value) => valuesThatChangeTheLayout.has(value));
   }
 
+  function validationAttributes() {
+    return `aria-describedby="validation-message"${validationMessage ? ' aria-invalid="true"' : ""}`;
+  }
+
+  function clearValidation() {
+    validationMessage = "";
+    const message = document.getElementById("validation-message");
+    if (message) {
+      message.textContent = "";
+      message.classList.remove("is-visible");
+    }
+    app.querySelectorAll('[aria-invalid="true"]').forEach((element) => {
+      element.removeAttribute("aria-invalid");
+    });
+  }
+
+  function focusAnswerControl(key, value) {
+    window.requestAnimationFrame(() => {
+      const step = STEP_INDEX.get(key);
+      const selected = step ? getOptions(step).find((item) => item.value === String(value)) : null;
+      let target = null;
+
+      if (step && selected?.other) {
+        const textKey = otherInputKey(step);
+        target = Array.from(app.querySelectorAll("[data-text-key]"))
+          .find((element) => element.dataset.textKey === textKey);
+      }
+
+      if (!target) {
+        target = Array.from(app.querySelectorAll("[data-answer-key]"))
+          .find((element) => element.dataset.answerKey === key && element.value === String(value));
+      }
+
+      if (target instanceof HTMLElement) target.focus({ preventScroll: true });
+    });
+  }
+
+  function focusStepHeading() {
+    window.requestAnimationFrame(() => {
+      const heading = app.querySelector("h1, h2");
+      if (!(heading instanceof HTMLElement)) return;
+      heading.tabIndex = -1;
+      heading.focus({ preventScroll: true });
+    });
+  }
+
+  function focusFirstControl() {
+    window.requestAnimationFrame(() => {
+      const control = app.querySelector("input, textarea");
+      if (control instanceof HTMLElement) control.focus({ preventScroll: true });
+    });
+  }
+
+  function scrollToStart() {
+    const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    window.scrollTo({ top: 0, behavior: reduceMotion ? "auto" : "smooth" });
+  }
+
   function optionLabelForRow(step, value) {
     const raw = (step.rowOptions || []).find((item) => item.value === value);
     if (!raw) return value;
@@ -877,7 +950,8 @@
     const isOtherSelected = other && (isMulti ? currentMany.includes(other.value) : currentSingle === other.value);
     const otherField = isOtherSelected
       ? `
-        <div class="other-input-wrap">
+        <label class="other-input-wrap">
+          <span class="sr-only">Свой вариант ответа</span>
           <input
             class="text-input"
             type="text"
@@ -885,12 +959,13 @@
             value="${escapeHtml(textAnswer(otherInputKey(step)))}"
             placeholder="Укажите, что именно"
             data-text-key="${escapeHtml(otherInputKey(step))}"
+            ${validationAttributes()}
             autocomplete="off"
           />
-        </div>`
+        </label>`
       : "";
 
-    return `<fieldset class="option-list"><legend class="sr-only">${escapeHtml(step.question)}</legend>${cards}</fieldset>${otherField}`;
+    return `<fieldset class="option-list" ${validationAttributes()}><legend class="sr-only">${escapeHtml(step.question)}</legend>${cards}</fieldset>${otherField}`;
   }
 
   function renderMatrix(step) {
@@ -916,10 +991,10 @@
           )
           .join("");
         return `
-          <section class="matrix-row" style="--row-index:${rowIndex}">
-            <div class="matrix-title">${escapeHtml(optionLabelForRow(step, rowValue))}</div>
+          <fieldset class="matrix-row" style="--row-index:${rowIndex}" ${validationAttributes()}>
+            <legend class="matrix-title">${escapeHtml(optionLabelForRow(step, rowValue))}</legend>
             <div class="matrix-options">${controls}</div>
-          </section>`;
+          </fieldset>`;
       })
       .join("");
     return `<div class="matrix">${rows}</div>`;
@@ -931,6 +1006,8 @@
         class="text-area"
         maxlength="4000"
         data-text-key="${escapeHtml(step.key)}"
+        aria-labelledby="question-title"
+        ${validationAttributes()}
         placeholder="${escapeHtml(step.placeholder || "Введите ответ…") }"
       >${escapeHtml(textAnswer(step.key))}</textarea>
       <div class="limit-note"><span>${step.optional ? "Необязательное поле" : "Развёрнутый ответ"}</span><span>До 4 000 знаков</span></div>`;
@@ -940,7 +1017,7 @@
     const values = Array.isArray(state.answers[step.key]) ? state.answers[step.key] : [];
     const fields = Array.from({ length: 10 }, (_, index) => `
       <label class="list-field">
-        <span class="list-field__number">${index + 1}</span>
+        <span class="list-field__number" id="list-${escapeHtml(step.key)}-${index}">${index + 1}</span>
         <input
           class="text-input"
           type="text"
@@ -949,11 +1026,13 @@
           placeholder="${escapeHtml(step.placeholder)}"
           data-list-key="${escapeHtml(step.key)}"
           data-list-index="${index}"
+          aria-labelledby="question-title list-${escapeHtml(step.key)}-${index}"
+          ${validationAttributes()}
           autocomplete="off"
         />
       </label>`,
     ).join("");
-    return `<div class="list-fields">${fields}</div><div class="limit-note"><span>Укажите хотя бы один источник</span><span>До 10 вариантов</span></div>`;
+    return `<div class="list-fields" ${validationAttributes()}>${fields}</div><div class="limit-note"><span>Укажите хотя бы один источник</span><span>До 10 вариантов</span></div>`;
   }
 
   function arrowIcon() {
@@ -989,7 +1068,7 @@
     return `
       <section class="step complete">
         <h1>${done ? "Спасибо за ответ" : "Спасибо, вы уже помогли"}</h1>
-        <p class="lead">Этот опрос предназначен для коллег, которые напрямую взаимодействуют с клиентами. Ваш ответ сохранён.</p>
+        <p class="lead">Этот опрос предназначен для коллег, которые напрямую взаимодействуют с клиентами. Ответ зафиксирован; при нестабильной связи отправка завершится автоматически.</p>
         ${done ? "" : renderActions({ primaryLabel: "Завершить", primaryAction: "screened" })}
       </section>`;
   }
@@ -999,7 +1078,7 @@
     return `
       <section class="step complete">
         <h1>${done ? "Спасибо за участие!" : "Готово к отправке"}</h1>
-        <p class="lead">${done ? "Ваши наблюдения сохранены. Они помогут лучше понять восприятие компании и продукта глазами клиентов." : "Проверьте, что всё сказано, и завершите опрос. Ответы уже сохранены на сервере."}</p>
+        <p class="lead">${done ? "Ответ принят. Если в момент завершения связь была нестабильной, отправка продолжится автоматически." : "Проверьте, что всё сказано, и завершите опрос. Все введённые ответы уже зафиксированы в защищённом черновике."}</p>
         ${done ? "" : renderActions({ primaryLabel: "Завершить опрос", primaryAction: "finish", back: true })}
       </section>`;
   }
@@ -1013,12 +1092,12 @@
     if (step.type === "list") control = renderList(step);
 
     return `
-      <section class="step question-step">
+      <section class="step question-step" aria-labelledby="question-title">
         <div class="question-code">Вопрос ${escapeHtml(step.code)}</div>
-        <h2>${escapeHtml(step.question)}${step.optional ? "" : ' <span class="question-required" aria-label="обязательный вопрос">*</span>'}</h2>
+        <h2 id="question-title">${escapeHtml(step.question)}${step.optional ? "" : ' <span class="question-required" aria-label="обязательный вопрос">*</span>'}</h2>
         ${step.help ? `<p class="question-help">${escapeHtml(step.help)}</p>` : ""}
         ${control}
-        <div class="validation-message${validationMessage ? " is-visible" : ""}" role="alert">${escapeHtml(validationMessage)}</div>
+        <div class="validation-message${validationMessage ? " is-visible" : ""}" id="validation-message" role="alert">${escapeHtml(validationMessage)}</div>
         ${renderActions({ primaryLabel: "Продолжить", primaryAction: "next", back: true })}
       </section>`;
   }
@@ -1045,18 +1124,47 @@
     progressBar.style.width = `${percent}%`;
     progressValue.textContent = `${percent}%`;
     stepLabel.textContent = `Вопрос ${step.code} · ${index + 1} из ${questionSteps.length}`;
+    progressTrack.setAttribute("aria-valuenow", String(percent));
   }
 
-  function render() {
+  function updateRail(step) {
+    let index = "00";
+    let title = "Исследование репутации";
+
+    if (step.id === "a-intro" || /^a\d/.test(step.id)) {
+      index = "01";
+      title = "Контекст взаимодействия";
+    } else if (step.id === "b-intro" || /^b\d/.test(step.id)) {
+      index = "02";
+      title = "Восприятие клиентов";
+    } else if (step.id === "c-intro" || /^c\d/.test(step.id)) {
+      index = "03";
+      title = "Медиапотребление";
+    } else if (step.type === "finish" || step.type === "screened") {
+      index = state.status === "completed" || state.status === "screened_out" ? "✓" : "04";
+      title = state.status === "completed" || state.status === "screened_out"
+        ? "Ответ принят"
+        : "Завершение";
+    }
+
+    railIndex.textContent = index;
+    railTitle.textContent = title;
+  }
+
+  function render(animate = true, focusHeading = false) {
     normalizeAnswers();
     const step = getCurrentStep();
     updateProgress(step);
+    updateRail(step);
+    app.classList.toggle("is-static-render", !animate);
 
     if (step.type === "welcome") app.innerHTML = renderWelcome();
     else if (step.type === "section") app.innerHTML = renderSection(step);
     else if (step.type === "screened") app.innerHTML = renderScreened();
     else if (step.type === "finish") app.innerHTML = renderFinish();
     else app.innerHTML = renderQuestion(step);
+
+    if (focusHeading) focusStepHeading();
   }
 
   function validateCurrentStep() {
@@ -1100,7 +1208,8 @@
     const message = direction > 0 ? validateCurrentStep() : "";
     if (message) {
       validationMessage = message;
-      render();
+      render(false);
+      focusFirstControl();
       return;
     }
 
@@ -1108,11 +1217,11 @@
     const index = steps.findIndex((step) => step.id === state.currentStepId);
     const next = steps[Math.max(0, Math.min(steps.length - 1, index + direction))];
     if (next) {
-      validationMessage = "";
+      clearValidation();
       state.currentStepId = next.id;
       stashLocal();
-      render();
-      window.scrollTo({ top: 0, behavior: "smooth" });
+      render(true, true);
+      scrollToStart();
     }
   }
 
@@ -1120,8 +1229,11 @@
     state.answers[key] = String(value);
     normalizeAnswers();
     bumpRevision();
-    validationMessage = "";
-    if (rerender) render();
+    clearValidation();
+    if (rerender) {
+      render(false);
+      focusAnswerControl(key, value);
+    }
     saveNow();
   }
 
@@ -1146,7 +1258,8 @@
     next = [...new Set(next)];
     if (step.max && next.length > step.max) {
       validationMessage = `Можно выбрать не более ${step.max} вариантов.`;
-      render();
+      render(false);
+      focusAnswerControl(key, value);
       return;
     }
 
@@ -1154,15 +1267,18 @@
     state.answers[key] = next;
     normalizeAnswers();
     bumpRevision();
-    validationMessage = "";
-    if (shouldRerender) render();
+    clearValidation();
+    if (shouldRerender) {
+      render(false);
+      focusAnswerControl(key, value);
+    }
     saveNow();
   }
 
   function setText(key, value) {
     state.answers[key] = value.slice(0, 4000);
     bumpRevision();
-    validationMessage = "";
+    clearValidation();
     saveTextSoon();
   }
 
@@ -1171,24 +1287,24 @@
     previous[index] = value.slice(0, 500);
     state.answers[key] = previous;
     bumpRevision();
-    validationMessage = "";
+    clearValidation();
     saveTextSoon();
   }
 
   function startSurvey() {
-    validationMessage = "";
+    clearValidation();
     state.currentStepId = "a1";
     state.status = "in_progress";
     stashLocal();
-    render();
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    render(true, true);
+    scrollToStart();
   }
 
   function complete(status) {
     state.status = status;
     bumpRevision();
     saveNow();
-    render();
+    render(true, true);
   }
 
   app.addEventListener("click", (event) => {

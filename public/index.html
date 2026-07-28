@@ -3,42 +3,73 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#10283e" />
+    <meta name="theme-color" content="#0a1f41" />
     <meta name="robots" content="noindex, nofollow" />
-    <title>Опрос о восприятии компании</title>
-    <link rel="stylesheet" href="styles.css?v=20260728-4" />
+    <meta name="description" content="Исследование восприятия компании и продукта Скала‑Р глазами клиентов." />
+    <title>Исследование восприятия — Скала‑Р</title>
+    <link rel="icon" href="assets/rubytech-mark.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="styles.css?v=20260728-6" />
   </head>
   <body>
-    <div class="ambient ambient-one" aria-hidden="true"></div>
-    <div class="ambient ambient-two" aria-hidden="true"></div>
+    <div class="brand-atmosphere" aria-hidden="true">
+      <div class="brand-atmosphere__ruby">
+        <img src="assets/rubytech-mark.svg" alt="" />
+      </div>
+      <div class="brand-atmosphere__lines"></div>
+      <div class="brand-atmosphere__beam"></div>
+    </div>
 
     <main class="survey-shell">
-      <header class="topbar" aria-label="Статус опроса">
+      <header class="topbar" aria-label="Исследование Скала‑Р">
         <a class="brand" href="./" aria-label="Опрос о восприятии компании">
-          <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
-          <span>
-            <strong>СКАЛА<sup>р</sup></strong>
-            <small>исследование репутации</small>
-          </span>
+          <img src="assets/skala-r-logo.svg" alt="Скала‑Р" width="155" height="36" />
         </a>
+        <div class="brand-context">
+          <span>Продукт Группы Rubytech</span>
+          <strong>Исследование репутации</strong>
+        </div>
       </header>
 
-      <section class="survey-card" aria-live="polite">
-        <div class="progress-wrap" id="progress-wrap" hidden>
-          <div class="progress-meta">
-            <span id="step-label">Вопрос</span>
-            <span id="progress-value">0%</span>
+      <div class="survey-workspace">
+        <aside class="survey-rail" id="survey-rail" aria-hidden="true">
+          <div class="survey-rail__top">
+            <span class="survey-rail__overline">Навигация</span>
+            <strong class="survey-rail__index" id="rail-index">00</strong>
           </div>
-          <div class="progress-track" aria-hidden="true">
-            <div class="progress-bar" id="progress-bar"></div>
+          <div class="survey-rail__bottom">
+            <span class="survey-rail__title" id="rail-title">Исследование репутации</span>
+            <span class="survey-rail__marker">
+              <img src="assets/rubytech-mark.svg" alt="" />
+            </span>
           </div>
-        </div>
+        </aside>
 
-        <div id="app" class="app-content"></div>
-      </section>
+        <section class="survey-card">
+          <span class="survey-card__accent" aria-hidden="true"></span>
+          <div class="progress-wrap" id="progress-wrap" hidden>
+            <div class="progress-meta">
+              <span id="step-label">Вопрос</span>
+              <span id="progress-value">0%</span>
+            </div>
+            <div
+              class="progress-track"
+              id="progress-track"
+              role="progressbar"
+              aria-labelledby="step-label"
+              aria-valuemin="0"
+              aria-valuemax="100"
+              aria-valuenow="0"
+            >
+              <div class="progress-bar" id="progress-bar"></div>
+            </div>
+          </div>
 
+          <div id="app" class="app-content"></div>
+          <p class="sr-only" id="save-status" role="status" aria-live="polite"></p>
+        </section>
+      </div>
     </main>
 
-    <script src="app.js?v=20260728-4" defer></script>
+    <script src="app.js?v=20260728-6" defer></script>
   </body>
 </html>
