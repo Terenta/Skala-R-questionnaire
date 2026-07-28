@@ -315,7 +315,7 @@
     const target = el("sentiment-chart");
     const definitions = [
       { key: "b1", title: "Компания" },
-      { key: "b4", title: "Продукт Скала^р" },
+      { key: "b4", title: "Продукты нашей компании" },
     ];
     target.innerHTML = definitions.map((definition) => {
       const question = schema.byKey.get(definition.key);
