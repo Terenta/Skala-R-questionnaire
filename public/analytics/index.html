@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#102145" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>Аналитика исследования — Скала^р</title>
+    <link rel="stylesheet" href="analytics.css?v=1" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <a class="brand" href="../" aria-label="Вернуться к анкете">
+          <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+          <span><strong>СКАЛА<sup>р</sup></strong><small>аналитика репутации</small></span>
+        </a>
+        <div class="topbar-actions">
+          <span class="freshness" id="freshness">Загрузка данных…</span>
+          <button class="button button-quiet mobile-filter-toggle" id="mobile-filter-toggle" type="button">Фильтры</button>
+          <button class="button button-quiet" id="copy-view" type="button">Скопировать срез</button>
+          <button class="button button-primary" id="export-csv" type="button">Экспорт CSV</button>
+        </div>
+      </header>
+
+      <div class="workspace">
+        <aside class="filters" id="filters" aria-label="Фильтры аналитики">
+          <div class="filters-head">
+            <div><span class="kicker">Срез данных</span><h2>Фильтры</h2></div>
+            <button class="icon-button" id="close-filters" type="button" aria-label="Закрыть фильтры">×</button>
+          </div>
+
+          <div class="quick-filters" aria-label="Быстрые фильтры">
+            <button class="quick-filter" type="button" data-preset="real">Только реальные</button>
+            <button class="quick-filter" type="button" data-preset="completed">Завершённые</button>
+            <button class="quick-filter" type="button" data-preset="negative">Есть негатив</button>
+            <button class="quick-filter" type="button" data-preset="events">Ходят на мероприятия</button>
+          </div>
+
+          <div class="filter-group">
+            <label for="filter-source">Источник данных</label>
+            <select id="filter-source">
+              <option value="all">Все ответы</option>
+              <option value="real">Только реальные</option>
+              <option value="test">Только тестовые</option>
+            </select>
+          </div>
+
+          <div class="filter-grid">
+            <div class="filter-group">
+              <label for="filter-status">Статус</label>
+              <select id="filter-status">
+                <option value="all">Любой</option>
+                <option value="completed">Завершён</option>
+                <option value="in_progress">В процессе</option>
+                <option value="screened_out">Отсев</option>
+              </select>
+            </div>
+            <div class="filter-group">
+              <label for="filter-department">Отдел</label>
+              <select id="filter-department"></select>
+            </div>
+          </div>
+
+          <div class="filter-grid">
+            <div class="filter-group">
+              <label for="filter-from">Дата от</label>
+              <input id="filter-from" type="date" />
+            </div>
+            <div class="filter-group">
+              <label for="filter-to">Дата до</label>
+              <input id="filter-to" type="date" />
+            </div>
+          </div>
+
+          <div class="filter-group">
+            <label for="filter-frequency">Частота общения с клиентами</label>
+            <select id="filter-frequency"></select>
+          </div>
+
+          <div class="filter-group">
+            <label for="filter-industry">Отрасль клиента</label>
+            <select id="filter-industry"></select>
+          </div>
+
+          <div class="filter-grid">
+            <div class="filter-group">
+              <label for="filter-company-negative">Негатив: компания</label>
+              <select id="filter-company-negative"></select>
+            </div>
+            <div class="filter-group">
+              <label for="filter-product-negative">Негатив: продукт</label>
+              <select id="filter-product-negative"></select>
+            </div>
+          </div>
+
+          <div class="filter-group">
+            <label for="filter-event">Профмероприятия</label>
+            <select id="filter-event"></select>
+          </div>
+
+          <div class="filter-group">
+            <label for="filter-search">Поиск по всем ответам</label>
+            <input id="filter-search" type="search" placeholder="Слово, канал, наблюдение…" autocomplete="off" />
+          </div>
+
+          <div class="advanced-head">
+            <div><span class="kicker">Конструктор</span><h3>Свои условия</h3></div>
+            <select id="rules-mode" aria-label="Логика условий">
+              <option value="all">Все условия</option>
+              <option value="any">Хотя бы одно</option>
+            </select>
+          </div>
+          <div class="advanced-rules" id="advanced-rules"></div>
+          <button class="button button-secondary button-full" id="add-rule" type="button">+ Добавить условие</button>
+
+          <div class="filter-footer">
+            <strong id="filtered-count">0 ответов</strong>
+            <button class="text-button" id="reset-filters" type="button">Сбросить всё</button>
+          </div>
+        </aside>
+
+        <main class="dashboard">
+          <section class="kpi-grid" aria-label="Ключевые показатели">
+            <article class="kpi-card"><span>Ответов в срезе</span><strong id="kpi-total">—</strong><small id="kpi-total-note">из —</small></article>
+            <article class="kpi-card"><span>Завершили опрос</span><strong id="kpi-completed">—</strong><small id="kpi-completed-note">— анкет</small></article>
+            <article class="kpi-card kpi-accent"><span>Встречали негатив о компании</span><strong id="kpi-company-negative">—</strong><small id="kpi-company-negative-note">среди ответивших</small></article>
+            <article class="kpi-card kpi-accent"><span>Встречали негатив о продукте</span><strong id="kpi-product-negative">—</strong><small id="kpi-product-negative-note">среди ответивших</small></article>
+          </section>
+
+          <section class="panel-grid panel-grid-wide">
+            <article class="panel panel-trend">
+              <header class="panel-head"><div><span class="kicker">Динамика</span><h2>Ответы по дням</h2></div><span class="panel-stat" id="trend-period">—</span></header>
+              <div class="trend-chart" id="trend-chart"></div>
+              <div class="chart-legend"><span><i class="legend-line line-complete"></i>Завершены</span><span><i class="legend-line line-progress"></i>В процессе / отсев</span></div>
+            </article>
+
+            <article class="panel">
+              <header class="panel-head"><div><span class="kicker">Репутация</span><h2>Частота негатива</h2></div></header>
+              <div class="sentiment-chart" id="sentiment-chart"></div>
+            </article>
+          </section>
+
+          <section class="panel-grid">
+            <article class="panel"><header class="panel-head"><div><span class="kicker">Профиль</span><h2>Отделы респондентов</h2></div></header><div class="bar-chart" id="department-chart"></div></article>
+            <article class="panel"><header class="panel-head"><div><span class="kicker">Клиенты</span><h2>Отрасли</h2></div></header><div class="bar-chart" id="industry-chart"></div></article>
+          </section>
+
+          <section class="panel explorer-panel">
+            <header class="panel-head explorer-head">
+              <div><span class="kicker">Все вопросы</span><h2>Исследователь результатов</h2></div>
+              <div class="explorer-controls">
+                <select id="explorer-question" aria-label="Вопрос"></select>
+                <select id="explorer-segment" aria-label="Сегментация">
+                  <option value="none">Без сегментации</option>
+                  <option value="department">По отделу</option>
+                  <option value="source">Реальные / тестовые</option>
+                  <option value="status">По статусу</option>
+                  <option value="companyNegative">По негативу о компании</option>
+                </select>
+              </div>
+            </header>
+            <p class="panel-description" id="explorer-description"></p>
+            <div class="explorer-chart" id="explorer-chart"></div>
+          </section>
+
+          <section class="panel-grid">
+            <article class="panel"><header class="panel-head"><div><span class="kicker">Драйверы</span><h2>Ключевые факторы выбора</h2></div></header><div class="bar-chart" id="factor-chart"></div></article>
+            <article class="panel"><header class="panel-head"><div><span class="kicker">Риски</span><h2>Причины недоверия</h2></div></header><div class="dual-bars" id="distrust-chart"></div></article>
+            <article class="panel"><header class="panel-head"><div><span class="kicker">Медиа</span><h2>Источники клиентов</h2></div></header><div class="bar-chart" id="media-chart"></div></article>
+            <article class="panel"><header class="panel-head"><div><span class="kicker">Маркетинг</span><h2>Недостающие материалы</h2></div></header><div class="bar-chart" id="materials-chart"></div></article>
+          </section>
+
+          <section class="panel responses-panel">
+            <header class="panel-head table-head">
+              <div><span class="kicker">Первичные данные</span><h2>Все прохождения</h2></div>
+              <div class="table-controls">
+                <label>На странице <select id="page-size"><option>10</option><option selected>25</option><option>50</option></select></label>
+                <select id="table-sort" aria-label="Сортировка">
+                  <option value="updated_desc">Сначала новые</option>
+                  <option value="updated_asc">Сначала старые</option>
+                  <option value="completion_desc">Сначала заполненные</option>
+                </select>
+              </div>
+            </header>
+            <div class="table-scroll">
+              <table>
+                <thead><tr><th>Дата</th><th>Источник</th><th>Статус</th><th>Отдел</th><th>Общение</th><th>Негатив</th><th>Заполнение</th><th></th></tr></thead>
+                <tbody id="responses-body"></tbody>
+              </table>
+            </div>
+            <div class="pagination"><button class="text-button" id="page-prev" type="button">← Назад</button><span id="page-info">—</span><button class="text-button" id="page-next" type="button">Вперёд →</button></div>
+          </section>
+        </main>
+      </div>
+    </div>
+
+    <div class="drawer-backdrop" id="drawer-backdrop" hidden></div>
+    <aside class="response-drawer" id="response-drawer" aria-label="Ответ респондента" aria-hidden="true">
+      <header><div><span class="kicker">Карточка прохождения</span><h2 id="drawer-title">Ответ</h2></div><button class="icon-button" id="close-drawer" type="button" aria-label="Закрыть">×</button></header>
+      <div class="drawer-meta" id="drawer-meta"></div>
+      <div class="drawer-content" id="drawer-content"></div>
+    </aside>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <div class="loading" id="loading"><span class="loading-mark"><i></i><i></i><i></i></span><p>Собираем аналитику…</p></div>
+    <div class="error-screen" id="error-screen" hidden><h1>Не удалось загрузить данные</h1><p id="error-message">Обновите страницу и попробуйте снова.</p><button class="button button-primary" id="retry-load" type="button">Повторить</button></div>
+
+    <script src="schema.js?v=1" defer></script>
+    <script src="analytics.js?v=1" defer></script>
+  </body>
+</html>

@@ -1,0 +1,340 @@
+# Skala‑R Questionnaire
+
+Веб-анкета для исследования восприятия компании и продукта «Скала‑Р» с автоматическим сохранением ответов и отдельным дашбордом аналитики.
+
+Проект не использует сторонние npm-зависимости: сервер работает на стандартных модулях Node.js 20, интерфейс — на HTML, CSS и JavaScript. Production-развёртывание выполняется через Docker Compose.
+
+## Возможности
+
+- адаптивная анкета с условными ветками, матрицами и множественным выбором;
+- сохранение после каждого выбора и изменения текста;
+- локальная копия заполнения в браузере;
+- автоматическая повторная отправка после восстановления сети;
+- отправка последнего изменения при закрытии или скрытии страницы;
+- защита от перезаписи новых данных устаревшим запросом;
+- атомарная и синхронизированная запись на диск;
+- журнал всех принятых ревизий в формате NDJSON;
+- защищённая Basic Auth панель аналитики;
+- фильтры, диаграммы и выгрузка результатов;
+- healthcheck, ротация Docker-логов и резервное копирование.
+
+## Архитектура и данные
+
+```text
+Браузер
+  ├─ публичная анкета
+  ├─ localStorage — временная страховка
+  └─ PUT /api/responses/:id
+             │
+             ▼
+        Node.js-сервер
+          ├─ /data/responses/*.json — актуальная версия каждой анкеты
+          └─ /data/journal/*.ndjson — журнал принятых ревизий
+             │
+             ▼
+   Docker volume reputation-survey-data
+```
+
+Каждая анкета хранится отдельным JSON-файлом. Запись выполняется во временный файл, принудительно синхронизируется с диском и затем атомарно переименовывается. Запрос с той же или меньшей ревизией не может затереть более свежий ответ.
+
+Основные маршруты:
+
+| Маршрут | Назначение |
+|---|---|
+| `/` | анкета |
+| `/analytics/` | дашборд аналитики, защищённый Basic Auth |
+| `/health` | проверка процесса и доступности хранилища |
+| `PUT /api/responses/:id` | автосохранение анкеты |
+| `GET /api/analytics/responses` | данные для аналитики, защищены Basic Auth |
+
+## Требования
+
+- Linux-сервер;
+- Docker Engine;
+- Docker Compose v2;
+- домен и reverse proxy для production;
+- HTTPS-сертификат;
+- минимум 1 ГБ свободной оперативной памяти и достаточно места под ответы/бэкапы.
+
+## Быстрый локальный запуск
+
+```bash
+git clone git@github.com:Terenta/Skala-R-questionnaire.git
+cd Skala-R-questionnaire
+cp .env.example .env
+```
+
+Сгенерируйте пароль аналитики:
+
+```bash
+openssl rand -base64 36
+```
+
+Запишите собственные значения в `.env`:
+
+```dotenv
+ANALYTICS_USER=analytics
+ANALYTICS_PASSWORD=replace-with-a-long-random-password
+SURVEY_PORT=3000
+```
+
+Запустите приложение:
+
+```bash
+docker compose up -d --build
+docker compose ps
+curl -fsS http://127.0.0.1:3000/health
+```
+
+После запуска:
+
+- анкета: `http://127.0.0.1:3000/`;
+- аналитика: `http://127.0.0.1:3000/analytics/`.
+
+Порт по умолчанию опубликован только на `127.0.0.1` и не доступен напрямую извне.
+
+## Production-развёртывание
+
+Рекомендуемый каталог:
+
+```bash
+sudo mkdir -p /opt/reputation-survey
+sudo chown "$USER":"$USER" /opt/reputation-survey
+git clone git@github.com:Terenta/Skala-R-questionnaire.git /opt/reputation-survey
+cd /opt/reputation-survey
+cp .env.example .env
+chmod 600 .env
+```
+
+Укажите собственные секреты в `.env`, затем выполните:
+
+```bash
+docker compose up -d --build
+docker compose ps
+curl -fsS http://127.0.0.1:3000/health
+```
+
+Ожидаемый healthcheck:
+
+```json
+{"ok":true,"storage":"writable"}
+```
+
+### Reverse proxy на хосте
+
+Готовые примеры находятся в:
+
+- `deploy/Caddyfile.example`;
+- `deploy/nginx.conf.example`.
+
+Для отдельного домена проксируйте все запросы на `127.0.0.1:3000`.
+
+Для размещения по пути `/reputation/` reverse proxy должен удалить этот префикс перед передачей запроса приложению:
+
+- Caddy: `handle_path /reputation/*`;
+- Nginx: `location /reputation/` и `proxy_pass http://127.0.0.1:3000/`.
+
+После настройки проверьте:
+
+```bash
+curl -fsS https://survey.example.ru/health
+```
+
+или:
+
+```bash
+curl -fsS https://example.ru/reputation/health
+```
+
+### Reverse proxy в Docker
+
+Если Nginx/Caddy работает в контейнере, подключите приложение к той же внешней сети:
+
+```bash
+REVERSE_PROXY_NETWORK=proxy \
+docker compose \
+  -f docker-compose.yml \
+  -f docker-compose.shared-network.yml \
+  up -d --build
+```
+
+Замените `proxy` на фактическое имя сети. В конфигурации reverse proxy используйте upstream `reputation-survey:3000`.
+
+## Хранение данных
+
+Production-данные находятся в именованном Docker volume:
+
+```text
+reputation-survey-data
+```
+
+Внутри контейнера:
+
+```text
+/data/responses
+/data/journal
+```
+
+Никогда не выполняйте `docker compose down -v` и не удаляйте volume при обычном обновлении.
+
+Проверка целостности:
+
+```bash
+docker exec reputation-survey node /app/scripts/audit-data.js
+```
+
+Успешная проверка содержит:
+
+```json
+{"invalidJson":0,"invalidShape":0,"temporaryFiles":0,"ok":true}
+```
+
+## Резервное копирование
+
+Скрипт создаёт сжатый снимок всего volume, проверяет архив и хранит его с правами `600`:
+
+```bash
+sudo /opt/reputation-survey/scripts/backup-responses.sh
+```
+
+Установка почасового cron-задания:
+
+```bash
+sudo chmod 755 /opt/reputation-survey/scripts/backup-responses.sh
+sudo install -m 0644 \
+  /opt/reputation-survey/ops/reputation-survey-backup.cron \
+  /etc/cron.d/reputation-survey-backup
+sudo systemctl reload cron
+sudo systemctl is-active cron
+```
+
+По умолчанию бэкапы создаются в `/opt/reputation-survey/backups` каждый час и хранятся 30 дней.
+
+Проверка последнего архива через изолированное временное восстановление:
+
+```bash
+sudo /opt/reputation-survey/scripts/verify-backup.sh
+```
+
+Проверка конкретного файла:
+
+```bash
+sudo /opt/reputation-survey/scripts/verify-backup.sh \
+  /opt/reputation-survey/backups/responses-YYYYMMDDTHHMMSSZ.tar.gz
+```
+
+Бэкапы на том же сервере не защищают от потери всего VDS. Настройте регулярную выгрузку во внешнее объектное хранилище, на другой сервер или в систему резервного копирования провайдера.
+
+## Безопасное восстановление
+
+Сначала проверьте архив командой `verify-backup.sh`. Затем восстановите его в новый временный volume, не перезаписывая рабочие данные:
+
+```bash
+docker volume create reputation-survey-restore
+docker run --rm \
+  -v reputation-survey-restore:/target \
+  -v /opt/reputation-survey/backups:/backups:ro \
+  node:20-alpine \
+  sh -c 'tar -xzf /backups/responses-YYYYMMDDTHHMMSSZ.tar.gz -C /target'
+```
+
+Проверьте восстановленные данные:
+
+```bash
+docker run --rm \
+  -e DATA_DIR=/data/responses \
+  -e JOURNAL_DIR=/data/journal \
+  -v reputation-survey-restore:/data:ro \
+  -v "$PWD/scripts":/audit-scripts:ro \
+  node:20-alpine \
+  node /audit-scripts/audit-data.js
+```
+
+Переключение production на восстановленный volume выполняйте только после успешного аудита и отдельного резервного снимка текущего volume.
+
+## Обновление
+
+```bash
+cd /opt/reputation-survey
+git pull --ff-only
+docker compose up -d --build
+docker compose ps
+curl -fsS http://127.0.0.1:3000/health
+docker exec reputation-survey node /app/scripts/audit-data.js
+```
+
+Команда `docker compose up -d --build` пересоздаёт контейнер, но сохраняет именованный volume.
+
+## Тестирование
+
+Проверка синтаксиса и основных маршрутов:
+
+```bash
+node --check server.js
+node --check public/app.js
+node scripts/smoke-test.js
+```
+
+Тест конкурентных записей, устаревших ревизий, журнала и перезапуска:
+
+```bash
+node scripts/reliability-test.js
+```
+
+Он использует временный локальный каталог и не затрагивает production.
+
+`scripts/seed-test-responses.js` создаёт демонстрационные ответы. Не запускайте его с production volume.
+
+`scripts/remote-reliability-test.js` создаёт запись на указанном удалённом сервере. Используйте его только на staging или удаляйте созданную тестовую запись после проверки.
+
+## Приёмочный чек-лист
+
+- [ ] анкета открывается по production URL;
+- [ ] после каждого выбора revision на сервере увеличивается;
+- [ ] текст сохраняется после короткой паузы;
+- [ ] заполнение восстанавливается после перезагрузки;
+- [ ] выбор, сделанный без сети, отправляется после её восстановления;
+- [ ] работают полное и досрочное завершение;
+- [ ] дашборд без авторизации возвращает `401`;
+- [ ] дашборд с корректными данными открывается;
+- [ ] `/health` возвращает `storage: writable`;
+- [ ] контейнер имеет статус `healthy`;
+- [ ] данные сохраняются после пересоздания контейнера;
+- [ ] аудит данных возвращает `ok: true`;
+- [ ] создан и успешно проверен резервный архив;
+- [ ] настроено внешнее резервное копирование;
+- [ ] включён HTTPS.
+
+## Эксплуатационные команды
+
+```bash
+docker compose ps
+docker compose logs --tail=200 reputation-survey
+docker inspect --format '{{.State.Health.Status}}' reputation-survey
+docker exec reputation-survey node /app/scripts/audit-data.js
+docker volume inspect reputation-survey-data
+df -h
+```
+
+## Структура репозитория
+
+```text
+public/                         анкета и аналитический дашборд
+scripts/                        тесты, аудит и резервное копирование
+ops/                            cron-конфигурация
+deploy/                         примеры Caddy и Nginx
+server.js                       HTTP-сервер и сохранение данных
+Dockerfile                      production-образ
+docker-compose.yml              стандартный запуск
+docker-compose.shared-network.yml  подключение к Docker reverse proxy
+```
+
+## Важные ограничения
+
+- Basic Auth безопасно использовать только через HTTPS.
+- Локальный `localStorage` — страховка, а не основное хранилище.
+- Основное хранилище — Docker volume; его нельзя удалять при обновлении.
+- Для защиты от полной потери сервера нужен внешний бэкап.
+- Изменения механики ревизий, атомарной записи и автосохранения требуют повторного нагрузочного и аварийного тестирования.
+
+Готовый текст передачи проекта разработчикам находится в [`docs/HANDOFF.md`](docs/HANDOFF.md).
