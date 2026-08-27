@@ -37,6 +37,14 @@ async function main() {
     if (seeded.status !== 0) {
       throw new Error(`Unable to prepare smoke data: ${seeded.stderr || seeded.stdout}`);
     }
+    const reseeded = spawnSync(process.execPath, ["scripts/seed-test-responses.js"], {
+      cwd: projectDir,
+      env: { ...process.env, DATA_DIR: dataDir },
+      encoding: "utf8",
+    });
+    if (reseeded.status !== 0 || !reseeded.stdout.includes('"replaced":50')) {
+      throw new Error(`Unable to refresh smoke data safely: ${reseeded.stderr || reseeded.stdout}`);
+    }
 
     server = spawn(process.execPath, ["server.js"], {
       cwd: projectDir,
@@ -58,6 +66,8 @@ async function main() {
     const api = await fetch(`${baseUrl}/api/analytics/responses`, { headers });
     const payload = await api.json();
     const survey = await fetch(`${baseUrl}/`);
+    const surveyApp = await fetch(`${baseUrl}/app.js`).then((response) => response.text());
+    const analyticsSchema = await fetch(`${baseUrl}/analytics/schema.js`, { headers }).then((response) => response.text());
     const font = await fetch(`${baseUrl}/assets/fonts/manrope-cyrillic.woff2`);
     const fontBytes = (await font.arrayBuffer()).byteLength;
     const contentSecurityPolicy = survey.headers.get("content-security-policy") || "";
@@ -73,6 +83,14 @@ async function main() {
       fontType: font.headers.get("content-type"),
       fontBytes,
       fontPolicy: contentSecurityPolicy.includes("font-src 'self'"),
+      questionnaireV2: surveyApp.includes('code: "A0"')
+        && surveyApp.includes('code: "B22"')
+        && surveyApp.includes('code: "B55"')
+        && surveyApp.includes('code: "B8"')
+        && surveyApp.includes("schemaVersion: SCHEMA_VERSION"),
+      analyticsV2: analyticsSchema.includes("currentVersion: 2")
+        && analyticsSchema.includes('prefix: "b3_"')
+        && analyticsSchema.includes('prefix: "b6_"'),
     };
     if (
       result.unauthorized !== 401
@@ -85,6 +103,8 @@ async function main() {
       || result.fontType !== "font/woff2"
       || result.fontBytes < 10_000
       || !result.fontPolicy
+      || !result.questionnaireV2
+      || !result.analyticsV2
     ) {
       throw new Error(`Smoke test failed: ${JSON.stringify(result)}`);
     }

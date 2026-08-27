@@ -1,7 +1,8 @@
 (() => {
   "use strict";
 
-  const STORAGE_KEY = "reputation-survey:state:v1";
+  const SCHEMA_VERSION = 2;
+  const STORAGE_KEY = `reputation-survey:state:v${SCHEMA_VERSION}`;
   const SAVE_TIMEOUT_MS = 12000;
   const app = document.getElementById("app");
   const progressWrap = document.getElementById("progress-wrap");
@@ -15,11 +16,17 @@
 
   const option = (value, label, extras = {}) => ({ value: String(value), label, ...extras });
 
+  const brands = [
+    option(1, "Скала^р"),
+    option(2, "Rubytech"),
+    option(3, "В равной степени с обоими"),
+  ];
+
   const departments = [
-    option(1, "Отдел продаж"),
-    option(2, "Пресейл"),
-    option(3, "Маркетинг"),
-    option("other", "Другое", { other: true }),
+    option(1, "Дивизион ключевых заказчиков"),
+    option(2, "Дивизион по развитию бизнеса"),
+    option(3, "Проектный менеджер внутри заказчика"),
+    option(4, "Другое", { other: true }),
   ];
 
   const clientFrequency = [
@@ -56,160 +63,136 @@
   ];
 
   const contactFrequency = [
-    option(1, "Часто"),
-    option(2, "Иногда"),
-    option(3, "Редко / эпизодически"),
-    option(4, "Контактировали один раз"),
-  ];
-
-  const clientTasks = [
-    option(1, "Замена оборудования с истекающим сроком эксплуатации"),
-    option(2, "Рост уровня киберугроз при невозможности защититься текущими средствами"),
-    option(3, "Выполнение новых регуляторных требований"),
-    option(4, "Масштабирование инфраструктуры в связи с ростом бизнеса"),
-    option(5, "Переход на российские решения (импортозамещение)"),
-    option(6, "Повышение надёжности инфраструктуры"),
-    option(7, "Оптимизация затрат на ИТ-инфраструктуру"),
-    option(8, "Запуск новых цифровых продуктов или сервисов"),
-    option(98, "Другое", { other: true }),
+    option(1, "Примерно раз в две недели"),
+    option(2, "Раз в 1–2 месяца"),
+    option(3, "Раз в полгода"),
+    option(4, "Реже, чем раз в полгода"),
   ];
 
   const supplierFactors = [
-    option(1, "Надёжность и репутация поставщика на рынке"),
-    option(2, "Наличие успешных кейсов"),
-    option(3, "Соответствие требованиям информационной безопасности"),
-    option(4, "Соответствие регуляторным требованиям / наличие сертификатов"),
-    option(5, "Совместимость с текущей инфраструктурой клиента"),
-    option(6, "Стоимость закупки"),
-    option(7, "Сроки предоставления услуг"),
-    option(8, "Качество технической поддержки"),
-    option(9, "Возможность пилота / тестирования решения"),
-    option(10, "Рекомендации коллег по рынку"),
-    option(11, "Независимые рейтинги и аналитические обзоры"),
+    option(1, "Надёжность компании как поставщика"),
+    option(2, "Репутация компании на рынке"),
+    option(3, "Наличие успешных кейсов"),
+    option(4, "Соответствие требованиям информационной безопасности"),
+    option(5, "Соответствие регуляторным требованиям / наличие сертификатов"),
+    option(6, "Совместимость с текущей инфраструктурой клиента"),
+    option(7, "Стоимость закупки"),
+    option(8, "Сроки предоставления услуг"),
+    option(9, "Качество технической поддержки"),
+    option(10, "Возможность пилота / тестирования решения"),
+    option(11, "Рекомендации коллег по рынку"),
+    option(12, "Независимые рейтинги и аналитические обзоры"),
+    option(13, "Совокупная стоимость владения (TCO)"),
+    option(14, "Технические особенности продукта"),
+    option(15, "Личный опыт взаимодействия / профессиональная экспертиза"),
     option(98, "Другое", { other: true }),
     option(99, "Затрудняюсь ответить", { exclusive: true }),
   ];
 
-  const negativeFrequency = [
-    option(1, "Да, часто"),
-    option(2, "Да, иногда"),
-    option(3, "Да, редко"),
-    option(4, "Нет, не встречали ни разу"),
+  const sentiment = [
+    option(1, "Только негативные"),
+    option(2, "Больше негативные"),
+    option(3, "В равном количестве негативные и позитивные"),
+    option(4, "Больше позитивные"),
+    option(5, "Только позитивные"),
+    option(99, "Затрудняюсь ответить / не получали отзывы"),
   ];
 
-  const companyDistrust = [
-    option(1, "Недостаточная известность компании на рынке"),
-    option(2, "Недостаток публичных кейсов внедрений"),
-    option(3, "Сомнения в технологической экспертизе компании"),
-    option(4, "Сомнения в финансовой устойчивости компании"),
-    option(5, "Сомнения в качестве технической поддержки"),
-    option(6, "Опасения по срокам поставки или внедрения"),
-    option(7, "Непонимание преимуществ перед конкурентами"),
-    option(8, "Негативный прошлый опыт взаимодействия с компанией"),
-    option(9, "Негативные отзывы от коллег / в СМИ"),
-    option(10, "Сомнения в соответствии регуляторным требованиям"),
-    option(11, "Кейс, связанный с делом основателя компании"),
-    option(98, "Другое", { other: true }),
-    option(99, "Затрудняюсь ответить", { exclusive: true }),
+  const ratingScale = [
+    option(1, "Негативно"),
+    option(2, "Скорее негативно"),
+    option(3, "Нейтрально"),
+    option(4, "Скорее позитивно"),
+    option(5, "Позитивно"),
+    option(99, "Не знаю"),
   ];
 
-  const productDistrust = [
-    option(1, "Недостаточная известность продукта"),
-    option(2, "Недостаток кейсов внедрения в отрасли клиента"),
-    option(3, "Сомнения в совместимости с текущей инфраструктурой клиента"),
-    option(4, "Сомнения в безопасности решения"),
-    option(5, "Сомнения в надёжности и отсутствии сбоев в работе"),
-    option(6, "Сложность внедрения или эксплуатации"),
-    option(7, "Недостаток функциональности по сравнению с конкурентами"),
-    option(8, "Высокая стоимость"),
-    option(9, "Недоверие к российским решениям в целом"),
-    option(10, "Негативный прошлый опыт использования продукта"),
-    option(98, "Другое", { other: true }),
-    option(99, "Затрудняюсь ответить", { exclusive: true }),
+  const companyRatingCriteria = [
+    option(1, "Известность на рынке"),
+    option(2, "Технологическая экспертиза"),
+    option(3, "Финансовая устойчивость компании"),
+    option(4, "Качество технической поддержки"),
+    option(5, "Количество публичных кейсов внедрений"),
+    option(6, "Соблюдение сроков поставки"),
+    option(7, "Отзывы от коллег / в СМИ"),
+    option(8, "Соответствие регуляторным требованиям"),
+    option(9, "Репутация компании / руководства"),
   ];
 
-  const mediaSources = [
-    option(1, "Деловые СМИ"),
-    option(2, "ИТ-СМИ, порталы и профессиональные сообщества"),
-    option(3, "Telegram-каналы"),
-    option(4, "YouTube-каналы"),
-    option(5, "Подкасты"),
-    option(98, "Другое", { other: true }),
-    option(99, "Затрудняюсь ответить", { exclusive: true }),
-  ];
-
-  const businessMedia = [
-    option(1, "РБК"),
-    option(2, "Ведомости"),
-    option(3, "Коммерсантъ"),
-    option(4, "Forbes Russia"),
-    option(5, "«Эксперт»"),
-    option(6, "«Секрет фирмы»"),
-    option(7, "«Профиль»"),
-    option(8, "Inc."),
-    option(9, "«Тинькофф Журнал»"),
-    option(10, "RB.ru"),
-    option(98, "Другое", { other: true }),
-    option(99, "Затрудняюсь ответить", { exclusive: true }),
-  ];
-
-  const itMedia = [
-    option(1, "Хабр"),
-    option(2, "VC.ru"),
-    option(3, "Skillbox Media"),
-    option(4, "Блог «Яндекс Практикума»"),
-    option(5, "Журнал GeekBrains"),
-    option(6, "Tproger"),
-    option(7, "IT-World"),
-    option(8, "Hi-Tech Mail.ru"),
-    option(9, "SecurityLab"),
-    option(10, "Anti-Malware.ru"),
-    option(11, "Код ИБ"),
-    option(12, "CNews"),
-    option(13, "TAdviser"),
-    option(98, "Другое", { other: true }),
-    option(99, "Затрудняюсь ответить", { exclusive: true }),
-  ];
-
-  const eventAttendance = [
-    option(1, "Да"),
-    option(2, "Нет"),
-    option(3, "Не владею такой информацией"),
+  const productRatingCriteria = [
+    option(1, "Известность продукта"),
+    option(2, "Совместимость с текущей инфраструктурой клиента"),
+    option(3, "Безопасность решения"),
+    option(4, "Надёжность и отсутствие сбоев в работе"),
+    option(5, "Количество публичных кейсов внедрений"),
+    option(6, "Уровень сложности внедрения или эксплуатации"),
+    option(7, "Функциональность по сравнению с конкурентами"),
+    option(8, "Стоимость"),
   ];
 
   const eventFormats = [
-    option(1, "Оффлайн-конференции / форумы"),
-    option(2, "Онлайн-конференции / форумы"),
-    option(3, "Практические семинары / воркшопы"),
-    option(4, "Круглые столы / экспертные дискуссии"),
-    option(5, "Вебинары"),
-    option(98, "Другое", { other: true }),
-    option(99, "Затрудняюсь ответить", { exclusive: true }),
+    option(1, "Отраслевые конференции ведомств (ЦИПР, «Цифровые решения», Уральский форум и др.)"),
+    option(2, "Собственные мероприятия ведущих игроков рынка (Postgres Conf, ИТ/Ритм и др.)"),
+    option(3, "Форумы и конференции федерального значения (ПМЭФ, ЦИПР, Дальневосточный экономический форум)"),
+    option(4, "Онлайн-конференции / форумы"),
+    option(5, "Семинары и воркшопы"),
+    option(98, "Вебинары"),
+    option(99, "Другое", { other: true }),
   ];
 
-  const attendanceDecision = [
-    option(1, "Заранее планируют участие на год вперёд"),
-    option(2, "Принимают решение за несколько месяцев"),
-    option(3, "Принимают решение спонтанно, не раньше чем за несколько недель"),
-    option(99, "Затрудняюсь ответить"),
-  ];
+  const hasNegativeFeedback = (key) => ["1", "2", "3", "4"].includes(answer(key));
+  const hasPositiveFeedback = (key) => ["2", "3", "4", "5"].includes(answer(key));
 
-  const marketingMaterials = [
-    option(1, "Кейсы внедрения по отраслям"),
-    option(2, "Кейсы внедрения по типовым задачам клиентов"),
-    option(3, "Независимые рейтинги и обзоры рынка"),
-    option(4, "Сравнительный анализ с конкурентами"),
-    option(5, "Вебинары для клиентов"),
-    option(6, "Обучающие материалы для технических специалистов клиента"),
-    option(98, "Другое", { other: true }),
-    option(97, "Не нужно никаких дополнительных материалов", { exclusive: true }),
-  ];
+  function hashString(value) {
+    let hash = 2166136261;
+    for (const character of String(value)) {
+      hash ^= character.charCodeAt(0);
+      hash = Math.imul(hash, 16777619);
+    }
+    return hash >>> 0;
+  }
 
-  const hasNegative = (key) => ["1", "2", "3"].includes(answer(key));
-  const hasChoice = (key, value) => answerArray(key).includes(String(value));
+  function shuffled(items, salt) {
+    const copy = [...items];
+    let seed = hashString(`${state?.id || "survey"}:${salt}`);
+    const random = () => {
+      seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+      return seed / 0x100000000;
+    };
+    for (let index = copy.length - 1; index > 0; index -= 1) {
+      const next = Math.floor(random() * (index + 1));
+      [copy[index], copy[next]] = [copy[next], copy[index]];
+    }
+    return copy;
+  }
+
+  function rotateExcept(options, fixedValues, salt) {
+    const fixed = new Set(fixedValues.map(String));
+    return [...shuffled(options.filter((item) => !fixed.has(item.value)), salt), ...options.filter((item) => fixed.has(item.value))];
+  }
+
+  function rotatedRoles(salt) {
+    const byValue = (value) => roles.find((item) => item.value === String(value));
+    return [
+      ...shuffled([1, 2, 3, 4].map(byValue), `${salt}:leaders`),
+      byValue(5),
+      ...shuffled([6, 7, 8].map(byValue), `${salt}:specialists`),
+      byValue(9),
+      ...shuffled([10, 11].map(byValue), `${salt}:other-specialists`),
+      byValue(98),
+    ];
+  }
 
   const ALL_STEPS = [
     { id: "welcome", type: "welcome" },
+    {
+      id: "a0",
+      type: "single",
+      code: "A0",
+      key: "a0",
+      question: "С каким брендом вы в основном работаете?",
+      options: brands,
+    },
     {
       id: "a1",
       type: "single",
@@ -223,7 +206,7 @@
       type: "single",
       code: "A2",
       key: "a2",
-      question: "Как часто вы напрямую взаимодействуете с клиентами?",
+      question: "Как часто вы напрямую взаимодействуете с клиентами / представителями клиентов?",
       options: clientFrequency,
     },
     {
@@ -236,9 +219,9 @@
       type: "multi",
       code: "A3",
       key: "a3",
-      question: "С клиентами из каких отраслей вы обычно работаете?",
+      question: "С клиентами / представителями клиентов из каких отраслей вы обычно работаете?",
       help: "Можно выбрать несколько вариантов.",
-      options: industries,
+      dynamicOptions: () => rotateExcept(industries, [98], "a3"),
     },
     {
       id: "a4",
@@ -247,7 +230,7 @@
       key: "a4",
       question: "С представителями каких должностей со стороны клиента вы контактируете в своей работе?",
       help: "Можно выбрать несколько вариантов.",
-      options: roles,
+      dynamicOptions: () => rotatedRoles("a4"),
     },
     {
       id: "a5",
@@ -256,18 +239,9 @@
       key: "a5",
       sourceKey: "a4",
       rowOptions: roles,
-      question: "Как часто в течение года вы контактируете с этими должностями со стороны клиента?",
+      question: "Как часто в течение 6 месяцев вы контактируете с этими должностями со стороны клиента?",
       help: "Дайте один ответ для каждой выбранной должности.",
       options: contactFrequency,
-    },
-    {
-      id: "a6",
-      type: "multi",
-      code: "A6",
-      key: "a6",
-      question: "С какими задачами к вам приходили клиенты за последний год?",
-      help: "Можно выбрать несколько вариантов.",
-      options: clientTasks,
     },
     {
       id: "a7",
@@ -276,7 +250,7 @@
       key: "a7",
       question: "Как вы думаете, на какие факторы опираются клиенты, когда выбирают поставщика инфраструктуры?",
       help: "Можно выбрать несколько вариантов.",
-      options: supplierFactors,
+      dynamicOptions: () => rotateExcept(supplierFactors, [98, 99], "a7"),
     },
     {
       id: "a8",
@@ -294,7 +268,7 @@
       type: "section",
       eyebrow: "Блок B",
       title: "Восприятие клиента",
-      text: "Сейчас будет блок вопросов об отношении клиентов к компании и её продукту. Отвечайте, опираясь на ваш опыт взаимодействия с текущими или потенциальными клиентами и фидбэк, который вы получали от них.",
+      text: "Сейчас будет блок вопросов об отношении клиентов к Группе Rubytech и её продуктам. Отвечайте, опираясь на ваш опыт взаимодействия с текущими или потенциальными клиентами и их представителями, а также на обратную связь, которую вы получали от них.",
       icon: "dialog",
     },
     {
@@ -302,233 +276,137 @@
       type: "single",
       code: "B1",
       key: "b1",
-      question: "Встречали ли вы негативные отзывы о нашей компании со стороны клиентов или потенциальных клиентов за последний год?",
-      options: negativeFrequency,
+      question: "Какие отзывы вы получали / слышали в целом о Группе Rubytech со стороны клиентов / представителей клиентов за последний год?",
+      options: sentiment,
     },
     {
       id: "b2",
       type: "multi",
       code: "B2",
       key: "b2",
-      question: "От каких должностей со стороны клиента обычно поступают негативные отзывы о компании?",
+      question: "От каких людей, занимающих эти позиции со стороны клиента, обычно поступают негативные отзывы о Группе Rubytech?",
       help: "Можно выбрать несколько вариантов.",
-      options: roles,
-      visible: () => hasNegative("b1"),
+      dynamicOptions: () => rotatedRoles("b2"),
+      visible: () => hasNegativeFeedback("b1"),
+    },
+    {
+      id: "b22",
+      type: "multi",
+      code: "B22",
+      key: "b22",
+      question: "От каких людей, занимающих эти позиции со стороны клиента, обычно поступают позитивные отзывы о Группе Rubytech?",
+      help: "Можно выбрать несколько вариантов.",
+      dynamicOptions: () => rotatedRoles("b22"),
+      visible: () => hasPositiveFeedback("b1"),
     },
     {
       id: "b3",
-      type: "multi",
+      type: "matrix",
       code: "B3",
       key: "b3",
-      question: "Какие причины недоверия к компании называют клиенты?",
-      help: "Можно выбрать несколько вариантов.",
-      options: companyDistrust,
-      visible: () => hasNegative("b1"),
+      rows: companyRatingCriteria,
+      rowOptions: companyRatingCriteria,
+      question: "Как клиенты / представители клиентов оценивают Группу Rubytech по следующим параметрам?",
+      help: "Оцените каждый параметр по пятибалльной шкале или выберите «Не знаю».",
+      options: ratingScale,
     },
     {
       id: "b4",
       type: "single",
       code: "B4",
       key: "b4",
-      question: "Встречали ли вы негативные отзывы именно о продуктах нашей компании со стороны клиентов или потенциальных клиентов за последний год?",
-      options: negativeFrequency,
+      question: "Какие отзывы вы получали / слышали в целом о продукте Скала^р со стороны клиентов / представителей клиентов за последний год?",
+      options: sentiment,
     },
     {
       id: "b5",
       type: "multi",
       code: "B5",
       key: "b5",
-      question: "От каких должностей со стороны клиента обычно поступают негативные отзывы о продуктах нашей компании?",
+      question: "От каких людей, занимающих эти позиции со стороны клиента, обычно поступают негативные отзывы о продукте Скала^р?",
       help: "Можно выбрать несколько вариантов.",
-      options: roles,
-      visible: () => hasNegative("b4"),
+      dynamicOptions: () => rotatedRoles("b5"),
+      visible: () => hasNegativeFeedback("b4"),
+    },
+    {
+      id: "b55",
+      type: "multi",
+      code: "B55",
+      key: "b55",
+      question: "От каких людей, занимающих эти позиции со стороны клиента, обычно поступают позитивные отзывы о продукте Скала^р?",
+      help: "Можно выбрать несколько вариантов.",
+      dynamicOptions: () => rotatedRoles("b55"),
+      visible: () => hasPositiveFeedback("b4"),
     },
     {
       id: "b6",
-      type: "multi",
+      type: "matrix",
       code: "B6",
       key: "b6",
-      question: "Какие причины недоверия к продуктам нашей компании называют клиенты?",
-      help: "Можно выбрать несколько вариантов.",
-      options: productDistrust,
-      visible: () => hasNegative("b4"),
+      rows: productRatingCriteria,
+      rowOptions: productRatingCriteria,
+      question: "Как клиенты / представители клиентов оценивают продукт Скала^р по следующим параметрам?",
+      help: "Оцените каждый параметр по пятибалльной шкале или выберите «Не знаю».",
+      options: ratingScale,
     },
     {
       id: "b7",
       type: "text",
       code: "B7",
       key: "b7",
-      question: "Что, по вашему мнению, могло бы снизить недоверие клиентов к нашей компании и её продуктам?",
+      question: "Что, по вашему мнению, вызывает недоверие клиентов к Группе Rubytech и продукту Скала^р?",
+      placeholder: "Опишите причины недоверия, которые вы замечали…",
+      visible: () => hasNegativeFeedback("b1") || hasNegativeFeedback("b4"),
+    },
+    {
+      id: "b8",
+      type: "text",
+      code: "B8",
+      key: "b8",
+      question: "Что, по вашему мнению, могло бы снизить недоверие клиентов к Группе Rubytech и продукту Скала^р?",
       placeholder: "Опишите ваши наблюдения и предложения…",
-      visible: () => hasNegative("b1") || hasNegative("b4"),
+      visible: () => hasNegativeFeedback("b1") || hasNegativeFeedback("b4"),
     },
     {
       id: "c-intro",
       type: "section",
       eyebrow: "Блок C",
       title: "Медиапотребление",
-      text: "В последнем блоке поговорим о медиа-контенте и обучающих материалах, которые интересны лично вам и могут быть интересны клиентам.",
+      text: "В последнем блоке вопросов поговорим о медиаконтенте и обучающих материалах, которые интересны лично вам и могут быть интересны клиенту.",
       icon: "compass",
     },
     {
       id: "c1",
-      type: "multi",
+      type: "text",
       code: "C1",
       key: "c1",
-      question: "Какие источники информации по теме ИТ и кибербезопасности вы используете?",
-      help: "Можно выбрать несколько вариантов.",
-      options: mediaSources,
+      question: "Какими профессиональными источниками информации вы пользуетесь для получения отраслевых новостей и экспертных материалов? Укажите конкретные названия печатных и онлайн-СМИ, порталов, профессиональных сообществ, Telegram- и YouTube-каналов, подкастов.",
+      placeholder: "Перечислите конкретные названия источников…",
     },
     {
       id: "c2",
-      type: "multi",
+      type: "text",
       code: "C2",
       key: "c2",
-      question: "Какие именно деловые СМИ вы читаете по профессиональной теме?",
-      help: "Можно выбрать несколько вариантов.",
-      options: businessMedia,
-      visible: () => hasChoice("c1", 1),
+      question: "Какими профессиональными источниками информации пользуются ваши клиенты для получения отраслевых новостей и экспертных материалов? Укажите конкретные названия печатных и онлайн-СМИ, порталов, профессиональных сообществ, Telegram- и YouTube-каналов, подкастов.",
+      placeholder: "Перечислите конкретные названия источников клиентов…",
     },
     {
       id: "c3",
       type: "multi",
       code: "C3",
       key: "c3",
-      question: "Какие именно ИТ-СМИ, порталы и профессиональные сообщества вы читаете?",
+      question: "Какие форматы профессиональных мероприятий посещают ваши клиенты?",
       help: "Можно выбрать несколько вариантов.",
-      options: itMedia,
-      visible: () => hasChoice("c1", 2),
+      dynamicOptions: () => rotateExcept(eventFormats, [98, 99], "c3"),
     },
     {
       id: "c4",
-      type: "list",
+      type: "text",
       code: "C4",
       key: "c4",
-      question: "Перечислите Telegram-каналы по профессиональной теме, которые вы читаете.",
-      placeholder: "Название или ссылка на Telegram-канал",
-      visible: () => hasChoice("c1", 3),
-    },
-    {
-      id: "c5",
-      type: "list",
-      code: "C5",
-      key: "c5",
-      question: "Перечислите YouTube-каналы, которые вы смотрите по профессиональной теме.",
-      placeholder: "Название или ссылка на YouTube-канал",
-      visible: () => hasChoice("c1", 4),
-    },
-    {
-      id: "c6",
-      type: "list",
-      code: "C6",
-      key: "c6",
-      question: "Перечислите подкасты, которые вы слушаете по профессиональной теме.",
-      placeholder: "Название подкаста",
-      visible: () => hasChoice("c1", 5),
-    },
-    {
-      id: "c7",
-      type: "multi",
-      code: "C7",
-      key: "c7",
-      question: "Какими источниками информации, на ваш взгляд, пользуются ваши клиенты для изучения рынка поставщиков ИТ-инфраструктуры?",
-      help: "Можно выбрать несколько вариантов.",
-      options: mediaSources,
-    },
-    {
-      id: "c8",
-      type: "multi",
-      code: "C8",
-      key: "c8",
-      question: "Какие именно деловые СМИ ваши клиенты читают по профессиональной теме?",
-      help: "Можно выбрать несколько вариантов.",
-      options: businessMedia,
-      visible: () => hasChoice("c7", 1),
-    },
-    {
-      id: "c9",
-      type: "multi",
-      code: "C9",
-      key: "c9",
-      question: "Какие именно ИТ-СМИ, порталы и профессиональные сообщества читают ваши клиенты?",
-      help: "Можно выбрать несколько вариантов.",
-      options: itMedia,
-      visible: () => hasChoice("c7", 2),
-    },
-    {
-      id: "c10",
-      type: "list",
-      code: "C10",
-      key: "c10",
-      question: "Перечислите Telegram-каналы по профессиональной теме, которые читают ваши клиенты.",
-      placeholder: "Название или ссылка на Telegram-канал",
-      visible: () => hasChoice("c7", 3),
-    },
-    {
-      id: "c11",
-      type: "list",
-      code: "C11",
-      key: "c11",
-      question: "Перечислите YouTube-каналы, которые клиенты смотрят по профессиональной теме.",
-      placeholder: "Название или ссылка на YouTube-канал",
-      visible: () => hasChoice("c7", 4),
-    },
-    {
-      id: "c12",
-      type: "list",
-      code: "C12",
-      key: "c12",
-      question: "Перечислите подкасты, которые клиенты слушают по профессиональной теме.",
-      placeholder: "Название подкаста",
-      visible: () => hasChoice("c7", 5),
-    },
-    {
-      id: "c13",
-      type: "single",
-      code: "C13",
-      key: "c13",
-      question: "Посещают ли ваши клиенты профессиональные мероприятия?",
-      options: eventAttendance,
-    },
-    {
-      id: "c14",
-      type: "multi",
-      code: "C14",
-      key: "c14",
-      question: "Мероприятия какого формата посещают ваши клиенты?",
-      help: "Можно выбрать несколько вариантов.",
-      options: eventFormats,
-      visible: () => answer("c13") === "1",
-    },
-    {
-      id: "c15",
-      type: "matrix",
-      code: "C15",
-      key: "c15",
-      sourceKey: "c14",
-      rowOptions: eventFormats,
-      excludeRows: ["99"],
-      question: "Как, на ваш взгляд, клиенты принимают решение об участии в каждом из выбранных типов мероприятий?",
-      help: "Дайте один ответ для каждого выбранного формата.",
-      options: attendanceDecision,
-      visible: () => answer("c13") === "1" && answerArray("c14").some((value) => value !== "99"),
-    },
-    {
-      id: "c16",
-      type: "multi",
-      code: "C16",
-      key: "c16",
-      question: "Каких маркетинговых материалов вам не хватает, которые помогли бы вам в работе с клиентами?",
-      help: "Можно выбрать несколько вариантов.",
-      options: marketingMaterials,
-    },
-    {
-      id: "c17",
-      type: "text",
-      code: "C17",
-      key: "c17",
       question: "Есть ли другие наблюдения о восприятии нашей компании, которыми вы хотите поделиться?",
-      placeholder: "Необязательное поле для любых дополнительных наблюдений…",
+      placeholder: "Необязательное поле для дополнительных наблюдений…",
       optional: true,
     },
     { id: "finish", type: "finish" },
@@ -552,6 +430,7 @@
 
   function blankState() {
     return {
+      schemaVersion: SCHEMA_VERSION,
       id: createResponseId(),
       answers: {},
       revision: 0,
@@ -573,6 +452,7 @@
         !Array.isArray(stored.answers)
       ) {
         return {
+          schemaVersion: SCHEMA_VERSION,
           id: stored.id,
           answers: stored.answers,
           revision: Number.isSafeInteger(stored.revision) ? stored.revision : 0,
@@ -621,7 +501,7 @@
 
   function getSteps() {
     if (answer("a2") === "97") {
-      return ALL_STEPS.filter((step) => ["welcome", "a1", "a2", "screened"].includes(step.id));
+      return ALL_STEPS.filter((step) => ["welcome", "a0", "a1", "a2", "screened"].includes(step.id));
     }
     return ALL_STEPS.filter((step) => !step.visible || step.visible());
   }
@@ -663,6 +543,7 @@
 
   function snapshot() {
     return {
+      schemaVersion: SCHEMA_VERSION,
       revision: state.revision,
       status: state.status,
       answers: JSON.parse(JSON.stringify(state.answers)),
@@ -778,26 +659,18 @@
       if (!condition) keys.forEach(clearAnswer);
     };
     const clearOther = (choiceKey, code, inputKey) => {
-      if (!hasChoice(choiceKey, code) && answer(choiceKey) !== code) clearAnswer(inputKey);
+      if (!answerArray(choiceKey).includes(String(code)) && answer(choiceKey) !== String(code)) clearAnswer(inputKey);
     };
 
-    clearOther("a1", "other", "a1_other");
+    clearOther("a1", "4", "a1_other");
     clearOther("a3", "98", "a3_other");
     clearOther("a4", "98", "a4_other");
-    clearOther("a6", "98", "a6_other");
     clearOther("a7", "98", "a7_other");
     clearOther("b2", "98", "b2_other");
-    clearOther("b3", "98", "b3_other");
+    clearOther("b22", "98", "b22_other");
     clearOther("b5", "98", "b5_other");
-    clearOther("b6", "98", "b6_other");
-    clearOther("c1", "98", "c1_other");
-    clearOther("c2", "98", "c2_other");
-    clearOther("c3", "98", "c3_other");
-    clearOther("c7", "98", "c7_other");
-    clearOther("c8", "98", "c8_other");
-    clearOther("c9", "98", "c9_other");
-    clearOther("c14", "98", "c14_other");
-    clearOther("c16", "98", "c16_other");
+    clearOther("b55", "98", "b55_other");
+    clearOther("c3", "99", "c3_other");
 
     const a4Values = answerArray("a4");
     clearStartsWith("a5_", a4Values);
@@ -812,28 +685,14 @@
     }
     clearOther("a8", "98", "a8_other");
 
-    clearUnless(hasNegative("b1"), ["b2", "b2_other", "b3", "b3_other"]);
-    clearUnless(hasNegative("b4"), ["b5", "b5_other", "b6", "b6_other"]);
-    clearUnless(hasNegative("b1") || hasNegative("b4"), ["b7"]);
+    clearUnless(hasNegativeFeedback("b1"), ["b2", "b2_other"]);
+    clearUnless(hasPositiveFeedback("b1"), ["b22", "b22_other"]);
+    clearUnless(hasNegativeFeedback("b4"), ["b5", "b5_other"]);
+    clearUnless(hasPositiveFeedback("b4"), ["b55", "b55_other"]);
+    clearUnless(hasNegativeFeedback("b1") || hasNegativeFeedback("b4"), ["b7", "b8"]);
 
-    clearUnless(hasChoice("c1", 1), ["c2", "c2_other"]);
-    clearUnless(hasChoice("c1", 2), ["c3", "c3_other"]);
-    clearUnless(hasChoice("c1", 3), ["c4"]);
-    clearUnless(hasChoice("c1", 4), ["c5"]);
-    clearUnless(hasChoice("c1", 5), ["c6"]);
-    clearUnless(hasChoice("c7", 1), ["c8", "c8_other"]);
-    clearUnless(hasChoice("c7", 2), ["c9", "c9_other"]);
-    clearUnless(hasChoice("c7", 3), ["c10"]);
-    clearUnless(hasChoice("c7", 4), ["c11"]);
-    clearUnless(hasChoice("c7", 5), ["c12"]);
-    clearUnless(answer("c13") === "1", ["c14", "c14_other"]);
-
-    const c14Values = answerArray("c14");
-    if (answer("c13") !== "1" || !c14Values.some((value) => value !== "99")) {
-      clearStartsWith("c15_");
-    } else {
-      clearStartsWith("c15_", c14Values.filter((value) => value !== "99"));
-    }
+    clearStartsWith("b3_", companyRatingCriteria.map((item) => item.value));
+    clearStartsWith("b6_", productRatingCriteria.map((item) => item.value));
   }
 
   function otherInputKey(step) {
@@ -920,6 +779,13 @@
     return raw.label;
   }
 
+  function matrixRows(step) {
+    const values = step.sourceKey
+      ? answerArray(step.sourceKey)
+      : (step.rows || step.rowOptions || []).map((item) => item.value);
+    return values.filter((value) => !step.excludeRows?.includes(value));
+  }
+
   function renderOptionList(step, inputType) {
     const options = getOptions(step);
     const currentSingle = answer(step.key);
@@ -969,8 +835,7 @@
   }
 
   function renderMatrix(step) {
-    const selected = answerArray(step.sourceKey).filter((value) => !step.excludeRows?.includes(value));
-    const rows = selected
+    const rows = matrixRows(step)
       .map((rowValue, rowIndex) => {
         const key = `${step.key}_${rowValue}`;
         const current = answer(key);
@@ -1047,8 +912,9 @@
     return `
       <section class="step welcome">
         <span class="eyebrow">Исследование репутации</span>
-        <h1>Как клиенты воспринимают нашу компанию?</h1>
-        <p class="lead">Поделитесь наблюдениями из общения с клиентами и потенциальными клиентами за последний год.</p>
+        <h1>Уважаемый(ая) коллега!</h1>
+        <p class="lead">Мы проводим внутренний опрос, чтобы лучше понять, как клиенты воспринимают нашу компанию. Просим опираться на личный опыт коммуникации с клиентами и потенциальными клиентами за последний год.</p>
+        <p class="lead">Опрос полностью анонимный и займёт не более 10 минут. Будем благодарны за полные ответы.</p>
         ${renderActions({ primaryLabel: "Начать опрос", primaryAction: "start", back: false })}
       </section>`;
   }
@@ -1186,7 +1052,7 @@
     }
 
     if (step.type === "matrix") {
-      const rows = answerArray(step.sourceKey).filter((value) => !step.excludeRows?.includes(value));
+      const rows = matrixRows(step);
       if (rows.some((row) => !answer(`${step.key}_${row}`))) return "Ответьте, пожалуйста, для каждого выбранного варианта.";
     }
 
@@ -1293,7 +1159,7 @@
 
   function startSurvey() {
     clearValidation();
-    state.currentStepId = "a1";
+    state.currentStepId = "a0";
     state.status = "in_progress";
     stashLocal();
     render(true, true);

@@ -8,7 +8,7 @@
     screened_out: "Отсев",
   };
   const filterIds = [
-    "filter-source", "filter-status", "filter-department", "filter-from", "filter-to",
+    "filter-version", "filter-source", "filter-status", "filter-brand", "filter-department", "filter-from", "filter-to",
     "filter-frequency", "filter-industry", "filter-company-negative", "filter-product-negative",
     "filter-event", "filter-search",
   ];
@@ -24,6 +24,9 @@
   };
 
   const el = (id) => document.getElementById(id);
+  const activeVersion = () => Number(el("filter-version").value) === 1 ? 1 : 2;
+  const activeQuestions = () => schema.questionsForVersion(activeVersion());
+  const activeByKey = () => schema.byKeyForVersion(activeVersion());
   const escapeHtml = (value) => String(value ?? "")
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
@@ -65,23 +68,41 @@
       .join("")}`;
   }
 
-  function initializeSelects() {
-    setSelectOptions(el("filter-department"), schema.departments, "Любой отдел");
-    setSelectOptions(el("filter-frequency"), schema.clientFrequency, "Любая частота");
-    setSelectOptions(el("filter-industry"), schema.industries, "Любая отрасль");
-    setSelectOptions(el("filter-event"), schema.eventAttendance, "Любой ответ");
-
-    const negativeOptions = [
-      { value: "negative", label: "Есть негатив" },
-      { value: "none", label: "Негатива нет" },
-      ...schema.negativeFrequency,
-    ];
-    setSelectOptions(el("filter-company-negative"), negativeOptions, "Любой ответ");
-    setSelectOptions(el("filter-product-negative"), negativeOptions, "Любой ответ");
-
-    el("explorer-question").innerHTML = schema.questions
+  function initializeExplorer() {
+    el("explorer-question").innerHTML = activeQuestions()
       .map((question) => `<option value="${question.key}"${question.key === "b1" ? " selected" : ""}>${question.code} · ${escapeHtml(question.title)}</option>`)
       .join("");
+  }
+
+  function initializeSelects() {
+    const version = activeVersion();
+    const collections = schema.collectionsForVersion(version);
+    setSelectOptions(el("filter-brand"), collections.brands, "Любой бренд");
+    setSelectOptions(el("filter-department"), collections.departments, "Любой отдел");
+    setSelectOptions(el("filter-frequency"), collections.clientFrequency, "Любая частота");
+    setSelectOptions(el("filter-industry"), collections.industries, "Любая отрасль");
+    const eventOptions = version === 1
+      ? collections.eventFormats
+      : [{ value: "answered", label: "Указан хотя бы один формат" }, ...collections.eventFormats];
+    setSelectOptions(el("filter-event"), eventOptions, version === 1 ? "Любой ответ" : "Любой формат");
+
+    const sentimentOptions = version === 1
+      ? [
+          { value: "negative", label: "Есть негатив" },
+          { value: "none", label: "Негатива нет" },
+          ...collections.sentiment,
+        ]
+      : [
+          { value: "negative", label: "Негативный баланс" },
+          { value: "balanced", label: "Позитив и негатив поровну" },
+          { value: "positive", label: "Позитивный баланс" },
+          { value: "unknown", label: "Нет оценки" },
+          ...collections.sentiment,
+        ];
+    setSelectOptions(el("filter-company-negative"), sentimentOptions, "Любой ответ");
+    setSelectOptions(el("filter-product-negative"), sentimentOptions, "Любой ответ");
+    el("brand-filter-group").hidden = version === 1;
+    initializeExplorer();
   }
 
   function answerValues(record, question) {
@@ -103,11 +124,19 @@
     return String(current ?? "") === String(value);
   }
 
-  function negativeMatch(value, filter) {
+  function sentimentMatch(value, filter, version) {
     if (filter === "all") return true;
-    if (filter === "negative") return ["1", "2", "3"].includes(String(value || ""));
-    if (filter === "none") return String(value || "") === "4";
-    return String(value || "") === filter;
+    const current = String(value || "");
+    if (version === 1) {
+      if (filter === "negative") return ["1", "2", "3"].includes(current);
+      if (filter === "none") return current === "4";
+      return current === filter;
+    }
+    if (filter === "negative") return ["1", "2"].includes(current);
+    if (filter === "balanced") return current === "3";
+    if (filter === "positive") return ["4", "5"].includes(current);
+    if (filter === "unknown") return current === "99";
+    return current === filter;
   }
 
   function searchableText(record) {
@@ -118,7 +147,7 @@
   }
 
   function ruleMatches(record, rule) {
-    const question = schema.byKey.get(rule.question);
+    const question = activeByKey().get(rule.question);
     if (!question) return true;
     const values = answerValues(record, question);
     if (rule.operator === "answered") return values.some((value) => value.trim());
@@ -132,8 +161,10 @@
   }
 
   function applyFilters() {
+    const version = activeVersion();
     const source = el("filter-source").value;
     const status = el("filter-status").value;
+    const brand = el("filter-brand").value;
     const department = el("filter-department").value;
     const from = el("filter-from").value;
     const to = el("filter-to").value;
@@ -146,15 +177,21 @@
     const rulesMode = el("rules-mode").value;
 
     state.filtered = state.records.filter((record) => {
+      if (schema.versionNumber(record) !== version) return false;
       if (source === "real" && record.isTest) return false;
       if (source === "test" && !record.isTest) return false;
       if (status !== "all" && record.status !== status) return false;
+      if (version === 2 && brand !== "all" && !recordHas(record, "a0", brand)) return false;
       if (department !== "all" && !recordHas(record, "a1", department)) return false;
       if (frequency !== "all" && !recordHas(record, "a2", frequency)) return false;
       if (industry !== "all" && !recordHas(record, "a3", industry)) return false;
-      if (!negativeMatch(record.answers?.b1, companyNegative)) return false;
-      if (!negativeMatch(record.answers?.b4, productNegative)) return false;
-      if (eventAttendance !== "all" && !recordHas(record, "c13", eventAttendance)) return false;
+      if (!sentimentMatch(record.answers?.b1, companyNegative, version)) return false;
+      if (!sentimentMatch(record.answers?.b4, productNegative, version)) return false;
+      if (eventAttendance !== "all") {
+        if (version === 1 && !recordHas(record, "c13", eventAttendance)) return false;
+        if (version === 2 && eventAttendance === "answered" && !answerValues(record, activeByKey().get("c3")).length) return false;
+        if (version === 2 && eventAttendance !== "answered" && !recordHas(record, "c3", eventAttendance)) return false;
+      }
 
       const created = String(record.createdAt || "").slice(0, 10);
       if (from && created < from) return false;
@@ -178,7 +215,7 @@
     const params = new URLSearchParams();
     for (const id of filterIds) {
       const control = el(id);
-      const defaultValue = control.tagName === "SELECT" ? "all" : "";
+      const defaultValue = id === "filter-version" ? "2" : control.tagName === "SELECT" ? "all" : "";
       if (control.value && control.value !== defaultValue) params.set(id.replace("filter-", ""), control.value);
     }
     if (state.rules.length) params.set("rules", JSON.stringify(state.rules));
@@ -207,12 +244,13 @@
   function completionPercent(record) {
     if (record.status === "completed") return 100;
     if (record.status === "screened_out") return 7;
-    const answered = schema.questions.filter((question) => answerValues(record, question).length).length;
-    return Math.min(96, Math.round((answered / schema.questions.length) * 100));
+    const questions = schema.questionsForVersion(record);
+    const answered = questions.filter((question) => answerValues(record, question).length).length;
+    return Math.min(96, Math.round((answered / questions.length) * 100));
   }
 
   function distribution(records, questionKey) {
-    const question = schema.byKey.get(questionKey);
+    const question = activeByKey().get(questionKey);
     if (!question) return { items: [], base: 0 };
     const counts = new Map(question.options.map((item) => [item.value, 0]));
     let base = 0;
@@ -248,12 +286,15 @@
   }
 
   function renderKpis() {
+    const version = activeVersion();
     const total = state.filtered.length;
     const completed = state.filtered.filter((record) => record.status === "completed").length;
-    const companyBase = state.filtered.filter((record) => record.answers?.b1).length;
-    const companyNegative = state.filtered.filter((record) => ["1", "2", "3"].includes(String(record.answers?.b1 || ""))).length;
-    const productBase = state.filtered.filter((record) => record.answers?.b4).length;
-    const productNegative = state.filtered.filter((record) => ["1", "2", "3"].includes(String(record.answers?.b4 || ""))).length;
+    const validValues = version === 1 ? ["1", "2", "3", "4"] : ["1", "2", "3", "4", "5"];
+    const negativeValues = version === 1 ? ["1", "2", "3"] : ["1", "2"];
+    const companyBase = state.filtered.filter((record) => validValues.includes(String(record.answers?.b1 || ""))).length;
+    const companyNegative = state.filtered.filter((record) => negativeValues.includes(String(record.answers?.b1 || ""))).length;
+    const productBase = state.filtered.filter((record) => validValues.includes(String(record.answers?.b4 || ""))).length;
+    const productNegative = state.filtered.filter((record) => negativeValues.includes(String(record.answers?.b4 || ""))).length;
 
     el("kpi-total").textContent = total.toLocaleString("ru-RU");
     el("kpi-total-note").textContent = `из ${state.records.length.toLocaleString("ru-RU")} всего`;
@@ -263,6 +304,8 @@
     el("kpi-company-negative-note").textContent = companyBase ? `${companyNegative} из ${companyBase}` : "нет ответов";
     el("kpi-product-negative").textContent = productBase ? `${percent(productNegative, productBase)}%` : "—";
     el("kpi-product-negative-note").textContent = productBase ? `${productNegative} из ${productBase}` : "нет ответов";
+    el("kpi-company-label").textContent = version === 1 ? "Встречали негатив о компании" : "Негативный баланс: группа";
+    el("kpi-product-label").textContent = version === 1 ? "Встречали негатив о продукте" : "Негативный баланс: продукт";
     el("filtered-count").textContent = `${total} ${plural(total, ["ответ", "ответа", "ответов"])}`;
   }
 
@@ -312,27 +355,53 @@
   }
 
   function renderSentiment() {
+    const version = activeVersion();
     const target = el("sentiment-chart");
     const definitions = [
-      { key: "b1", title: "Компания" },
-      { key: "b4", title: "Продукты нашей компании" },
+      { key: "b1", title: version === 1 ? "Компания" : "Группа Rubytech" },
+      { key: "b4", title: version === 1 ? "Продукт" : "Продукт Скала^р" },
     ];
+    const negativeValues = version === 1 ? ["1", "2", "3"] : ["1", "2"];
     target.innerHTML = definitions.map((definition) => {
-      const question = schema.byKey.get(definition.key);
+      const question = activeByKey().get(definition.key);
       const records = state.filtered.filter((record) => answerValues(record, question).length);
       const counts = question.options.map((option) => records.filter((record) => recordHas(record, definition.key, option.value)).length);
-      const negative = counts.slice(0, 3).reduce((sum, value) => sum + value, 0);
+      const negative = question.options.reduce((sum, option, index) => sum + (negativeValues.includes(option.value) ? counts[index] : 0), 0);
       return `<div class="sentiment-block">
-        <div class="sentiment-title"><span>${escapeHtml(definition.title)}</span><strong>${records.length ? `${percent(negative, records.length)}% с негативом` : "нет данных"}</strong></div>
+        <div class="sentiment-title"><span>${escapeHtml(definition.title)}</span><strong>${records.length ? `${percent(negative, records.length)}% ${version === 1 ? "с негативом" : "с негативным балансом"}` : "нет данных"}</strong></div>
         <div class="sentiment-stack">${counts.map((count) => `<i class="sentiment-segment" data-pct="${percent(count, records.length)}" title="${count}"></i>`).join("")}</div>
         <div class="sentiment-key">${question.options.map((option, index) => `<span><i class="segment-color-${index + 1}"></i>${escapeHtml(option.label)} · ${counts[index]}</span>`).join("")}</div>
       </div>`;
     }).join("");
+    el("sentiment-title").textContent = version === 1 ? "Частота негатива" : "Баланс отзывов";
     target.querySelectorAll("[data-pct]").forEach((node) => node.style.setProperty("--value", node.dataset.pct));
   }
 
   function renderDistrust() {
     const target = el("distrust-chart");
+    if (activeVersion() === 2) {
+      const groups = [
+        { title: "Группа Rubytech", key: "b3" },
+        { title: "Продукт Скала^р", key: "b6" },
+      ];
+      target.innerHTML = groups.map((group) => {
+        const question = activeByKey().get(group.key);
+        const rows = question.rows.map((row) => {
+          const values = state.filtered
+            .map((record) => Number(record.answers?.[`${question.prefix}${row.value}`]))
+            .filter((value) => value >= 1 && value <= 5);
+          const average = values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
+          return { label: row.label, average, count: values.length };
+        }).filter((row) => row.count);
+        return `<div class="dual-group"><div class="dual-title">${escapeHtml(group.title)}</div>${rows.map((row) => `
+          <div class="bar-row"><div class="bar-meta"><span>${escapeHtml(row.label)}</span><strong>${row.average.toFixed(1)} · ${row.count}</strong></div><div class="bar-track"><div class="bar-fill" data-pct="${Math.round((row.average / 5) * 100)}"></div></div></div>`).join("") || '<div class="bar-empty">Нет данных</div>'}</div>`;
+      }).join("");
+      el("risk-kicker").textContent = "Оценки";
+      el("risk-title").textContent = "Средние оценки";
+      target.querySelectorAll("[data-pct]").forEach((node) => node.style.setProperty("--value", node.dataset.pct));
+      return;
+    }
+
     const groups = [
       { title: "Компания", key: "b3" },
       { title: "Продукт", key: "b6" },
@@ -342,26 +411,54 @@
       return `<div class="dual-group"><div class="dual-title">${group.title}</div>${items.slice(0, 4).map((item) => `
         <div class="bar-row"><div class="bar-meta"><span>${escapeHtml(item.label)}</span><strong>${item.pct}%</strong></div><div class="bar-track"><div class="bar-fill" data-pct="${item.pct}"></div></div></div>`).join("") || '<div class="bar-empty">Нет данных</div>'}</div>`;
     }).join("");
+    el("risk-kicker").textContent = "Риски";
+    el("risk-title").textContent = "Причины недоверия";
+    target.querySelectorAll("[data-pct]").forEach((node) => node.style.setProperty("--value", node.dataset.pct));
+  }
+
+  function renderTextInsights(target, questionKey, limit = 8) {
+    const question = activeByKey().get(questionKey);
+    const values = state.filtered.flatMap((record) => answerValues(record, question)).filter((value) => value.trim());
+    target.innerHTML = values.length
+      ? `<div class="text-insights">${values.slice(0, limit).map((value) => `<div class="text-insight">${escapeHtml(value)}</div>`).join("")}</div>`
+      : '<div class="bar-empty">Нет данных для выбранного среза</div>';
+  }
+
+  function renderPositiveRoles() {
+    const target = el("materials-chart");
+    const groups = [
+      { title: "Группа Rubytech", key: "b22" },
+      { title: "Продукт Скала^р", key: "b55" },
+    ];
+    target.innerHTML = groups.map((group) => {
+      const { items } = distribution(state.filtered, group.key);
+      return `<div class="dual-group"><div class="dual-title">${escapeHtml(group.title)}</div>${items.slice(0, 4).map((item) => `
+        <div class="bar-row"><div class="bar-meta"><span>${escapeHtml(item.label)}</span><strong>${item.pct}%</strong></div><div class="bar-track"><div class="bar-fill" data-pct="${item.pct}"></div></div></div>`).join("") || '<div class="bar-empty">Нет данных</div>'}</div>`;
+    }).join("");
     target.querySelectorAll("[data-pct]").forEach((node) => node.style.setProperty("--value", node.dataset.pct));
   }
 
   function segmentDefinition(type, record) {
     if (type === "department") {
       const value = String(record.answers?.a1 || "none");
-      return { key: value, label: schema.labelFor(schema.byKey.get("a1"), value) || "Нет ответа" };
+      return { key: value, label: schema.labelFor(schema.byKeyForVersion(record).get("a1"), value) || "Нет ответа" };
     }
     if (type === "source") return record.isTest ? { key: "test", label: "Тестовые" } : { key: "real", label: "Реальные" };
     if (type === "status") return { key: record.status, label: statusLabels[record.status] || record.status };
     if (type === "companyNegative") {
-      if (["1", "2", "3"].includes(String(record.answers?.b1 || ""))) return { key: "negative", label: "Есть негатив" };
-      if (String(record.answers?.b1 || "") === "4") return { key: "none", label: "Негатива нет" };
+      const value = String(record.answers?.b1 || "");
+      if (activeVersion() === 1 && ["1", "2", "3"].includes(value)) return { key: "negative", label: "Есть негатив" };
+      if (activeVersion() === 1 && value === "4") return { key: "none", label: "Негатива нет" };
+      if (activeVersion() === 2 && ["1", "2"].includes(value)) return { key: "negative", label: "Негативный баланс" };
+      if (activeVersion() === 2 && value === "3") return { key: "balanced", label: "Поровну" };
+      if (activeVersion() === 2 && ["4", "5"].includes(value)) return { key: "positive", label: "Позитивный баланс" };
       return { key: "unknown", label: "Нет ответа" };
     }
     return { key: "all", label: "Все ответы" };
   }
 
   function renderExplorer() {
-    const question = schema.byKey.get(el("explorer-question").value) || schema.byKey.get("b1");
+    const question = activeByKey().get(el("explorer-question").value) || activeByKey().get("b1");
     const segmentType = el("explorer-segment").value;
     const target = el("explorer-chart");
     const answeredRecords = state.filtered.filter((record) => answerValues(record, question).length);
@@ -414,7 +511,7 @@
   function renderRules() {
     const target = el("advanced-rules");
     target.innerHTML = state.rules.map((rule, index) => {
-      const question = schema.byKey.get(rule.question) || schema.questions[0];
+      const question = activeByKey().get(rule.question) || activeQuestions()[0];
       const hasOptions = question.options.length > 0;
       const operators = hasOptions
         ? [["has", "содержит"], ["not_has", "не содержит"], ["answered", "заполнено"], ["unanswered", "не заполнено"]]
@@ -422,7 +519,7 @@
       const needsValue = !["answered", "unanswered"].includes(rule.operator);
       return `<div class="rule" data-rule-index="${index}">
         <button class="rule-remove" type="button" data-remove-rule="${index}" aria-label="Удалить условие">×</button>
-        <select data-rule-field="question">${schema.questions.map((item) => `<option value="${item.key}"${item.key === question.key ? " selected" : ""}>${item.code} · ${escapeHtml(item.title)}</option>`).join("")}</select>
+        <select data-rule-field="question">${activeQuestions().map((item) => `<option value="${item.key}"${item.key === question.key ? " selected" : ""}>${item.code} · ${escapeHtml(item.title)}</option>`).join("")}</select>
         <select data-rule-field="operator">${operators.map(([value, label]) => `<option value="${value}"${value === rule.operator ? " selected" : ""}>${label}</option>`).join("")}</select>
         ${needsValue ? (hasOptions
           ? `<select data-rule-field="value">${question.options.map((item) => `<option value="${escapeHtml(item.value)}"${String(item.value) === String(rule.value) ? " selected" : ""}>${escapeHtml(item.label)}</option>`).join("")}</select>`
@@ -432,14 +529,26 @@
   }
 
   function renderCharts() {
+    const version = activeVersion();
     renderTrend();
     renderSentiment();
     renderBarChart(el("department-chart"), "a1", 6);
     renderBarChart(el("industry-chart"), "a3", 7);
     renderBarChart(el("factor-chart"), "a8", 7);
     renderDistrust();
-    renderBarChart(el("media-chart"), "c7", 7);
-    renderBarChart(el("materials-chart"), "c16", 7);
+    if (version === 1) {
+      renderBarChart(el("media-chart"), "c7", 7);
+      renderBarChart(el("materials-chart"), "c16", 7);
+      el("media-title").textContent = "Источники клиентов";
+      el("materials-kicker").textContent = "Маркетинг";
+      el("materials-title").textContent = "Недостающие материалы";
+    } else {
+      renderTextInsights(el("media-chart"), "c2");
+      renderPositiveRoles();
+      el("media-title").textContent = "Источники клиентов";
+      el("materials-kicker").textContent = "Отзывы";
+      el("materials-title").textContent = "Кто сообщает позитив";
+    }
     renderExplorer();
   }
 
@@ -452,7 +561,7 @@
   }
 
   function answerLabel(record, key) {
-    const question = schema.byKey.get(key);
+    const question = schema.byKeyForVersion(record).get(key);
     const value = record.answers?.[key];
     if (!value) return "—";
     const label = schema.labelFor(question, value);
@@ -469,19 +578,23 @@
 
     el("responses-body").innerHTML = pageRecords.map((record) => {
       const completion = completionPercent(record);
-      const negative = [record.answers?.b1, record.answers?.b4].some((value) => ["1", "2", "3"].includes(String(value || "")))
-        ? "Есть" : [record.answers?.b1, record.answers?.b4].every((value) => String(value || "") === "4") ? "Нет" : "—";
+      const responseVersion = schema.versionNumber(record);
+      const sentimentValues = [record.answers?.b1, record.answers?.b4].map((value) => String(value || ""));
+      const tone = responseVersion === 1
+        ? (sentimentValues.some((value) => ["1", "2", "3"].includes(value)) ? "Есть негатив" : sentimentValues.every((value) => value === "4") ? "Без негатива" : "—")
+        : (sentimentValues.some((value) => ["1", "2"].includes(value)) ? "Негативный" : sentimentValues.some((value) => value === "3") ? "Смешанный" : sentimentValues.some((value) => ["4", "5"].includes(value)) ? "Позитивный" : "—");
       return `<tr>
         <td>${escapeHtml(shortDate(record.updatedAt))}</td>
         <td><span class="source-pill ${record.isTest ? "source-test" : "source-real"}">${record.isTest ? "Тест" : "Реальный"}</span></td>
+        <td>v${responseVersion}</td>
         <td><span class="status-pill status-${escapeHtml(record.status)}">${escapeHtml(statusLabels[record.status] || record.status)}</span></td>
         <td>${escapeHtml(answerLabel(record, "a1"))}</td>
         <td>${escapeHtml(answerLabel(record, "a2"))}</td>
-        <td>${negative}</td>
+        <td>${tone}</td>
         <td><span class="completion"><i class="completion-track"><b class="completion-fill" data-pct="${completion}"></b></i>${completion}%</span></td>
         <td><button class="row-open" type="button" data-open-record="${escapeHtml(record.id)}">Открыть</button></td>
       </tr>`;
-    }).join("") || '<tr><td colspan="8"><div class="bar-empty">Нет прохождений по выбранным условиям</div></td></tr>';
+    }).join("") || '<tr><td colspan="9"><div class="bar-empty">Нет прохождений по выбранным условиям</div></td></tr>';
     el("responses-body").querySelectorAll("[data-pct]").forEach((node) => node.style.setProperty("--value", node.dataset.pct));
     el("page-info").textContent = records.length ? `${start + 1}–${Math.min(start + state.pageSize, records.length)} из ${records.length}` : "0 ответов";
     el("page-prev").disabled = state.page <= 1;
@@ -516,7 +629,7 @@
       <span class="source-pill ${record.isTest ? "source-test" : "source-real"}">${record.isTest ? "Тестовые данные" : "Реальный ответ"}</span>
       <span class="status-pill status-${escapeHtml(record.status)}">${escapeHtml(statusLabels[record.status] || record.status)}</span>
       <span class="status-pill status-screened_out">Заполнение ${completionPercent(record)}%</span>`;
-    el("drawer-content").innerHTML = schema.questions.map((question) => {
+    el("drawer-content").innerHTML = schema.questionsForVersion(record).map((question) => {
       const answer = formatQuestionAnswer(record, question);
       if (!answer) return "";
       return `<div class="answer-row"><div class="answer-question">${question.code} · ${escapeHtml(question.title)}</div><div class="answer-value">${escapeHtml(answer)}</div></div>`;
@@ -537,7 +650,7 @@
       const active = (button.dataset.preset === "real" && el("filter-source").value === "real")
         || (button.dataset.preset === "completed" && el("filter-status").value === "completed")
         || (button.dataset.preset === "negative" && el("filter-company-negative").value === "negative")
-        || (button.dataset.preset === "events" && el("filter-event").value === "1");
+        || (button.dataset.preset === "events" && el("filter-event").value === (activeVersion() === 1 ? "1" : "answered"));
       button.classList.toggle("is-active", active);
     });
   }
@@ -564,15 +677,16 @@
 
   function exportCsv() {
     const answerKeys = [...new Set(state.filtered.flatMap((record) => Object.keys(record.answers || {})))].sort();
-    const header = ["id", "source", "status", "createdAt", "updatedAt", ...answerKeys];
+    const header = ["id", "source", "schemaVersion", "status", "createdAt", "updatedAt", ...answerKeys];
     const rows = state.filtered.map((record) => [
       record.id,
       record.isTest ? "test" : "real",
+      schema.versionNumber(record),
       record.status,
       record.createdAt,
       record.updatedAt,
       ...answerKeys.map((key) => {
-        const question = schema.questionForAnswerKey(key);
+        const question = schema.questionForAnswerKey(key, record);
         const value = record.answers?.[key];
         if (Array.isArray(value)) return value.map((item) => schema.labelFor(question, item)).join(" | ");
         return question && question.options?.length ? schema.labelFor(question, value) : value ?? "";
@@ -591,16 +705,17 @@
   function resetFilters() {
     for (const id of filterIds) {
       const control = el(id);
-      control.value = control.tagName === "SELECT" ? "all" : "";
+      control.value = id === "filter-version" ? "2" : control.tagName === "SELECT" ? "all" : "";
     }
     state.rules = [];
     el("rules-mode").value = "all";
+    initializeSelects();
     renderRules();
     applyFilters();
   }
 
   function addRule() {
-    const question = schema.questions[0];
+    const question = activeQuestions()[0];
     state.rules.push({ question: question.key, operator: "has", value: question.options[0]?.value || "" });
     renderRules();
     applyFilters();
@@ -618,7 +733,16 @@
   function bindEvents() {
     for (const id of filterIds) {
       const control = el(id);
-      control.addEventListener(control.type === "search" ? "input" : "change", applyFilters);
+      if (id === "filter-version") {
+        control.addEventListener("change", () => {
+          state.rules = [];
+          initializeSelects();
+          renderRules();
+          applyFilters();
+        });
+      } else {
+        control.addEventListener(control.type === "search" ? "input" : "change", applyFilters);
+      }
     }
     el("rules-mode").addEventListener("change", applyFilters);
     el("add-rule").addEventListener("click", addRule);
@@ -643,7 +767,10 @@
         if (preset.dataset.preset === "real") el("filter-source").value = el("filter-source").value === "real" ? "all" : "real";
         if (preset.dataset.preset === "completed") el("filter-status").value = el("filter-status").value === "completed" ? "all" : "completed";
         if (preset.dataset.preset === "negative") el("filter-company-negative").value = el("filter-company-negative").value === "negative" ? "all" : "negative";
-        if (preset.dataset.preset === "events") el("filter-event").value = el("filter-event").value === "1" ? "all" : "1";
+        if (preset.dataset.preset === "events") {
+          const eventValue = activeVersion() === 1 ? "1" : "answered";
+          el("filter-event").value = el("filter-event").value === eventValue ? "all" : eventValue;
+        }
         applyFilters();
       }
       const open = event.target.closest("[data-open-record]");
@@ -663,7 +790,7 @@
       const field = event.target.dataset.ruleField;
       state.rules[index][field] = event.target.value;
       if (field === "question") {
-        const question = schema.byKey.get(event.target.value);
+        const question = activeByKey().get(event.target.value);
         state.rules[index].operator = question.options.length ? "has" : "text";
         state.rules[index].value = question.options[0]?.value || "";
       }
@@ -704,6 +831,7 @@
     }
   }
 
+  if (new URLSearchParams(location.search).get("version") === "1") el("filter-version").value = "1";
   initializeSelects();
   restoreUrl();
   renderRules();

@@ -52,7 +52,7 @@ async function put(revision, marker, status = "in_progress") {
   const response = await fetch(`${baseUrl}/api/responses/${responseId}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ revision, status, answers: { a1: "1", marker } }),
+    body: JSON.stringify({ schemaVersion: 2, revision, status, answers: { a0: "2", a1: "1", marker } }),
   });
   return { status: response.status, body: await response.json() };
 }
@@ -104,6 +104,7 @@ async function main() {
     current = await analytics();
     assert(current.record?.revision === 42, `highest_revision_lost_${current.record?.revision}`);
     assert(current.record?.answers?.marker === "revision-42", "highest_revision_payload_lost");
+    assert(current.record?.schemaVersion === 2, `schema_version_${current.record?.schemaVersion}`);
     assert(current.record?.isTest === true, "test_record_not_marked");
     results.revisions = { finalRevision: current.record.revision, concurrentWrites: concurrent.length, staleProtected: true };
 

@@ -103,6 +103,11 @@ function safeRevision(value) {
   return Number.isSafeInteger(revision) && revision >= 0 ? revision : 0;
 }
 
+function safeSchemaVersion(value, fallback = 1) {
+  const version = Number(value);
+  return Number.isSafeInteger(version) && version >= 1 && version <= 100 ? version : fallback;
+}
+
 function readJson(req) {
   return new Promise((resolve, reject) => {
     let size = 0;
@@ -208,7 +213,7 @@ async function saveResponseUnlocked(id, payload) {
 
   const now = new Date().toISOString();
   const record = {
-    schemaVersion: 1,
+    schemaVersion: safeSchemaVersion(payload.schemaVersion, safeSchemaVersion(existing?.schemaVersion, 1)),
     id,
     createdAt: existing?.createdAt || now,
     updatedAt: now,

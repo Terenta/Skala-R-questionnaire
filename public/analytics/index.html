@@ -7,7 +7,7 @@
     <meta name="robots" content="noindex, nofollow" />
     <title>Аналитика исследования нашей компании</title>
     <link rel="icon" href="../assets/rubytech-mark.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="analytics.css?v=2" />
+    <link rel="stylesheet" href="analytics.css?v=3" />
   </head>
   <body>
     <div class="app-shell">
@@ -34,8 +34,21 @@
           <div class="quick-filters" aria-label="Быстрые фильтры">
             <button class="quick-filter" type="button" data-preset="real">Только реальные</button>
             <button class="quick-filter" type="button" data-preset="completed">Завершённые</button>
-            <button class="quick-filter" type="button" data-preset="negative">Есть негатив</button>
-            <button class="quick-filter" type="button" data-preset="events">Ходят на мероприятия</button>
+            <button class="quick-filter" type="button" data-preset="negative">Негативный баланс</button>
+            <button class="quick-filter" type="button" data-preset="events">Есть мероприятия</button>
+          </div>
+
+          <div class="filter-group">
+            <label for="filter-version">Версия анкеты</label>
+            <select id="filter-version">
+              <option value="2" selected>Текущая версия</option>
+              <option value="1">Предыдущая версия</option>
+            </select>
+          </div>
+
+          <div class="filter-group" id="brand-filter-group">
+            <label for="filter-brand">Основной бренд</label>
+            <select id="filter-brand"></select>
           </div>
 
           <div class="filter-group">
@@ -86,17 +99,17 @@
 
           <div class="filter-grid">
             <div class="filter-group">
-              <label for="filter-company-negative">Негатив: компания</label>
+              <label for="filter-company-negative">Тональность: компания</label>
               <select id="filter-company-negative"></select>
             </div>
             <div class="filter-group">
-              <label for="filter-product-negative">Негатив: продукт</label>
+              <label for="filter-product-negative">Тональность: продукт</label>
               <select id="filter-product-negative"></select>
             </div>
           </div>
 
           <div class="filter-group">
-            <label for="filter-event">Профмероприятия</label>
+            <label for="filter-event">Формат мероприятий</label>
             <select id="filter-event"></select>
           </div>
 
@@ -125,8 +138,8 @@
           <section class="kpi-grid" aria-label="Ключевые показатели">
             <article class="kpi-card"><span>Ответов в срезе</span><strong id="kpi-total">—</strong><small id="kpi-total-note">из —</small></article>
             <article class="kpi-card"><span>Завершили опрос</span><strong id="kpi-completed">—</strong><small id="kpi-completed-note">— анкет</small></article>
-            <article class="kpi-card kpi-accent"><span>Встречали негатив о компании</span><strong id="kpi-company-negative">—</strong><small id="kpi-company-negative-note">среди ответивших</small></article>
-            <article class="kpi-card kpi-accent"><span>Встречали негатив о продукте</span><strong id="kpi-product-negative">—</strong><small id="kpi-product-negative-note">среди ответивших</small></article>
+            <article class="kpi-card kpi-accent"><span id="kpi-company-label">Негативный баланс: группа</span><strong id="kpi-company-negative">—</strong><small id="kpi-company-negative-note">среди ответивших</small></article>
+            <article class="kpi-card kpi-accent"><span id="kpi-product-label">Негативный баланс: продукт</span><strong id="kpi-product-negative">—</strong><small id="kpi-product-negative-note">среди ответивших</small></article>
           </section>
 
           <section class="panel-grid panel-grid-wide">
@@ -137,7 +150,7 @@
             </article>
 
             <article class="panel">
-              <header class="panel-head"><div><span class="kicker">Репутация</span><h2>Частота негатива</h2></div></header>
+              <header class="panel-head"><div><span class="kicker">Репутация</span><h2 id="sentiment-title">Баланс отзывов</h2></div></header>
               <div class="sentiment-chart" id="sentiment-chart"></div>
             </article>
           </section>
@@ -167,9 +180,9 @@
 
           <section class="panel-grid">
             <article class="panel"><header class="panel-head"><div><span class="kicker">Драйверы</span><h2>Ключевые факторы выбора</h2></div></header><div class="bar-chart" id="factor-chart"></div></article>
-            <article class="panel"><header class="panel-head"><div><span class="kicker">Риски</span><h2>Причины недоверия</h2></div></header><div class="dual-bars" id="distrust-chart"></div></article>
-            <article class="panel"><header class="panel-head"><div><span class="kicker">Медиа</span><h2>Источники клиентов</h2></div></header><div class="bar-chart" id="media-chart"></div></article>
-            <article class="panel"><header class="panel-head"><div><span class="kicker">Маркетинг</span><h2>Недостающие материалы</h2></div></header><div class="bar-chart" id="materials-chart"></div></article>
+            <article class="panel"><header class="panel-head"><div><span class="kicker" id="risk-kicker">Оценки</span><h2 id="risk-title">Средние оценки</h2></div></header><div class="dual-bars" id="distrust-chart"></div></article>
+            <article class="panel"><header class="panel-head"><div><span class="kicker">Медиа</span><h2 id="media-title">Источники клиентов</h2></div></header><div class="bar-chart" id="media-chart"></div></article>
+            <article class="panel"><header class="panel-head"><div><span class="kicker" id="materials-kicker">Отзывы</span><h2 id="materials-title">Кто сообщает позитив</h2></div></header><div class="bar-chart" id="materials-chart"></div></article>
           </section>
 
           <section class="panel responses-panel">
@@ -186,7 +199,7 @@
             </header>
             <div class="table-scroll">
               <table>
-                <thead><tr><th>Дата</th><th>Источник</th><th>Статус</th><th>Отдел</th><th>Общение</th><th>Негатив</th><th>Заполнение</th><th></th></tr></thead>
+                <thead><tr><th>Дата</th><th>Источник</th><th>Версия</th><th>Статус</th><th>Отдел</th><th>Общение</th><th>Тональность</th><th>Заполнение</th><th></th></tr></thead>
                 <tbody id="responses-body"></tbody>
               </table>
             </div>
@@ -207,7 +220,7 @@
     <div class="loading" id="loading"><span class="loading-mark"><i></i><i></i><i></i></span><p>Собираем аналитику…</p></div>
     <div class="error-screen" id="error-screen" hidden><h1>Не удалось загрузить данные</h1><p id="error-message">Обновите страницу и попробуйте снова.</p><button class="button button-primary" id="retry-load" type="button">Повторить</button></div>
 
-    <script src="schema.js?v=2" defer></script>
-    <script src="analytics.js?v=2" defer></script>
+    <script src="schema.js?v=3" defer></script>
+    <script src="analytics.js?v=3" defer></script>
   </body>
 </html>

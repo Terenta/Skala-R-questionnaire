@@ -13,7 +13,7 @@ async function put(revision, marker, status = "in_progress") {
   const response = await fetch(`${baseUrl}/api/responses/${responseId}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ revision, status, answers: { a1: "1", a2: "2", marker } }),
+    body: JSON.stringify({ schemaVersion: 2, revision, status, answers: { a0: "2", a1: "1", a2: "2", marker } }),
   });
   const body = await response.json();
   assert(response.status === 200, `put_${revision}_${response.status}`);
@@ -36,7 +36,7 @@ async function main() {
   assert(health.ok && health.storage === "writable", "storage_health_failed");
 
   const survey = await fetch(`${baseUrl}/`);
-  const app = await fetch(`${baseUrl}/app.js?v=20260728-4`);
+  const app = await fetch(`${baseUrl}/app.js?v=20260827-1`);
   assert(survey.status === 200 && app.status === 200, "static_assets_failed");
 
   const invalid = await fetch(`${baseUrl}/api/responses/${responseId}`, {
@@ -55,6 +55,7 @@ async function main() {
   await Promise.all(revisions.map((revision) => put(revision, `revision-${revision}`)));
   let record = await getRecord();
   assert(record?.revision === 31, `concurrent_final_revision_${record?.revision}`);
+  assert(record?.schemaVersion === 2, `schema_version_${record?.schemaVersion}`);
   assert(record?.answers?.marker === "revision-31", "concurrent_payload_lost");
   assert(record?.isTest === true, "production_test_not_marked");
 
