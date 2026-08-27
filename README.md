@@ -165,6 +165,15 @@ docker compose \
 
 Замените `proxy` на фактическое имя сети. В конфигурации reverse proxy используйте upstream `reputation-survey:3000`.
 
+Чтобы общий сетевой профиль не потерялся при следующем обычном обновлении, рекомендуется закрепить его в production `.env`:
+
+```dotenv
+COMPOSE_FILE=docker-compose.yml:docker-compose.shared-network.yml
+REVERSE_PROXY_NETWORK=proxy
+```
+
+После этого достаточно выполнять `docker compose up -d --build`: Compose автоматически применит оба файла. Без `COMPOSE_FILE` запуск только с базовым `docker-compose.yml` пересоздаст контейнер без общей сети reverse proxy.
+
 ## Хранение данных
 
 Production-данные находятся в именованном Docker volume:
@@ -258,6 +267,8 @@ docker run --rm \
 Переключение production на восстановленный volume выполняйте только после успешного аудита и отдельного резервного снимка текущего volume.
 
 ## Обновление
+
+Используйте тот же Compose-профиль, с которым выполнялось первоначальное production-развёртывание. Для Docker reverse proxy заранее задайте `COMPOSE_FILE` и `REVERSE_PROXY_NETWORK` в `.env`, как описано выше.
 
 ```bash
 cd /opt/reputation-survey
