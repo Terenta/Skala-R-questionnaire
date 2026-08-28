@@ -23,6 +23,7 @@ const expectedCodes = [
 assert(JSON.stringify(schema.questions.map((question) => question.code)) === JSON.stringify(expectedCodes), "question_order_mismatch");
 assert(schema.questions.length === 22, `question_count_${schema.questions.length}`);
 assert(schema.byKey.get("a0")?.options?.length === 3, "brand_options_mismatch");
+assert(schema.byKey.get("a1")?.options?.find((option) => option.value === "3")?.label === "Проектная группа внутри заказчика", "department_option_3_mismatch");
 assert(schema.byKey.get("a7")?.options?.length === 17, "supplier_factor_options_mismatch");
 assert(schema.byKey.get("b1")?.options?.length === 6, "company_sentiment_options_mismatch");
 assert(schema.byKey.get("b3")?.rows?.length === 9, "company_matrix_rows_mismatch");
