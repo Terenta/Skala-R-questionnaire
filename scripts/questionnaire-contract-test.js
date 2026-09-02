@@ -14,6 +14,7 @@ const context = { window: {} };
 vm.runInNewContext(analyticsSource, context, { filename: "analytics/schema.js" });
 const schema = context.window.AnalyticsSchema;
 const legacyCompanyHeader = ["Группа", "компаний", "Rubytech"].join(" ");
+const removedAccessCopy = ["Доступ к исследованию открыт", "только для приглашённых участников."].join(" ");
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
@@ -69,6 +70,7 @@ assert(!accessSource.includes(legacyCompanyHeader), "legacy_company_header_in_ac
 assert(indexSource.includes("Группа Rubytech"), "company_header_missing_in_survey");
 assert(accessSource.includes("Группа Rubytech"), "company_header_missing_in_access");
 assert(accessSource.includes("Введите пароль"), "survey_access_screen_missing");
+assert(!accessSource.includes(removedAccessCopy), "removed_access_copy_returned");
 assert(serverSource.includes('url.pathname === "/api/survey/unlock"'), "survey_unlock_route_missing");
 assert(serverSource.includes('"HttpOnly"') && serverSource.includes('"SameSite=Strict"'), "survey_cookie_policy_missing");
 assert(serverSource.includes("if (!hasSurveyAccess(req))"), "survey_write_gate_missing");
