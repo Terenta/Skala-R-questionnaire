@@ -12,7 +12,20 @@ const PUBLIC_DIR = path.join(__dirname, "public");
 const MAX_BODY_BYTES = 320 * 1024;
 const ANALYTICS_USER = String(process.env.ANALYTICS_USER || "");
 const ANALYTICS_PASSWORD = String(process.env.ANALYTICS_PASSWORD || "");
+const SURVEY_PASSWORD = String(process.env.SURVEY_PASSWORD || "");
+const requestedCookiePath = String(process.env.SURVEY_COOKIE_PATH || "/");
+const SURVEY_COOKIE_PATH = /^\/[a-zA-Z0-9/_-]*$/.test(requestedCookiePath)
+  ? requestedCookiePath
+  : "/";
+const SURVEY_COOKIE_NAME = "reputation_survey_access";
+const SURVEY_ACCESS_TOKEN = SURVEY_PASSWORD
+  ? crypto.createHash("sha256").update(`reputation-survey-access\0${SURVEY_PASSWORD}`).digest("base64url")
+  : "";
+const SURVEY_AUTH_WINDOW_MS = 15 * 60 * 1000;
+const SURVEY_AUTH_MAX_FAILURES = 10;
+const SURVEY_AUTH_MAX_CLIENTS = 2048;
 const responseWriteQueues = new Map();
+const surveyAuthFailures = new Map();
 let journalWriteQueue = Promise.resolve();
 
 const MIME_TYPES = {
@@ -35,13 +48,14 @@ function commonHeaders() {
   };
 }
 
-function sendJson(res, statusCode, body) {
+function sendJson(res, statusCode, body, extraHeaders = {}) {
   const serialized = JSON.stringify(body);
   res.writeHead(statusCode, {
     ...commonHeaders(),
     "Content-Type": "application/json; charset=utf-8",
     "Cache-Control": "no-store",
     "Content-Length": Buffer.byteLength(serialized),
+    ...extraHeaders,
   });
   res.end(serialized);
 }
@@ -82,6 +96,76 @@ function requestAnalyticsAccess(res) {
     "Content-Length": Buffer.byteLength(message),
   });
   res.end(message);
+}
+
+function cookieValue(req, name) {
+  for (const part of String(req.headers.cookie || "").split(";")) {
+    const separator = part.indexOf("=");
+    if (separator < 0) continue;
+    if (part.slice(0, separator).trim() === name) return part.slice(separator + 1).trim();
+  }
+  return "";
+}
+
+function hasSurveyAccess(req) {
+  if (!SURVEY_PASSWORD) return true;
+  return safeEqual(cookieValue(req, SURVEY_COOKIE_NAME), SURVEY_ACCESS_TOKEN);
+}
+
+function surveyClientKey(req) {
+  const forwarded = String(req.headers["x-forwarded-for"] || "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+  return forwarded.at(-1) || req.socket.remoteAddress || "unknown";
+}
+
+function activeSurveyAuthFailure(req) {
+  const key = surveyClientKey(req);
+  const current = surveyAuthFailures.get(key);
+  if (!current || current.resetAt <= Date.now()) {
+    surveyAuthFailures.delete(key);
+    return { key, count: 0, resetAt: Date.now() + SURVEY_AUTH_WINDOW_MS };
+  }
+  return { key, ...current };
+}
+
+function recordSurveyAuthFailure(req) {
+  const current = activeSurveyAuthFailure(req);
+  surveyAuthFailures.set(current.key, {
+    count: current.count + 1,
+    resetAt: current.resetAt,
+  });
+
+  if (surveyAuthFailures.size > SURVEY_AUTH_MAX_CLIENTS) {
+    const now = Date.now();
+    for (const [key, value] of surveyAuthFailures) {
+      if (value.resetAt <= now) surveyAuthFailures.delete(key);
+    }
+    while (surveyAuthFailures.size > SURVEY_AUTH_MAX_CLIENTS) {
+      surveyAuthFailures.delete(surveyAuthFailures.keys().next().value);
+    }
+  }
+}
+
+function clearSurveyAuthFailures(req) {
+  surveyAuthFailures.delete(surveyClientKey(req));
+}
+
+function surveyAccessCookie(req) {
+  const forwardedProto = String(req.headers["x-forwarded-proto"] || "")
+    .split(",")
+    .at(-1)
+    ?.trim();
+  const secure = forwardedProto === "https" || Boolean(req.socket.encrypted);
+  return [
+    `${SURVEY_COOKIE_NAME}=${SURVEY_ACCESS_TOKEN}`,
+    `Path=${SURVEY_COOKIE_PATH}`,
+    "HttpOnly",
+    "SameSite=Strict",
+    "Max-Age=2592000",
+    ...(secure ? ["Secure"] : []),
+  ].join("; ");
 }
 
 function isPlainObject(value) {
@@ -284,11 +368,17 @@ async function serveStatic(req, res, pathname) {
       ? "/analytics/index.html"
       : decoded;
   const normalized = path.normalize(requested).replace(/^[\\/]+/, "");
-  const filePath = path.resolve(PUBLIC_DIR, normalized);
+  let filePath = path.resolve(PUBLIC_DIR, normalized);
 
   if (!filePath.startsWith(`${PUBLIC_DIR}${path.sep}`)) {
     sendError(res, 403, "Доступ запрещён");
     return;
+  }
+
+  // Check the resolved file as well as the URL. This prevents encoded or
+  // normalized aliases of index.html from bypassing the survey gate.
+  if (filePath === path.join(PUBLIC_DIR, "index.html") && !hasSurveyAccess(req)) {
+    filePath = path.join(PUBLIC_DIR, "access.html");
   }
 
   try {
@@ -332,6 +422,35 @@ async function handleRequest(req, res) {
     return;
   }
 
+  if (req.method === "POST" && url.pathname === "/api/survey/unlock") {
+    if (!SURVEY_PASSWORD) {
+      sendJson(res, 200, { ok: true });
+      return;
+    }
+
+    const failure = activeSurveyAuthFailure(req);
+    if (failure.count >= SURVEY_AUTH_MAX_FAILURES) {
+      sendJson(res, 429, { error: "Слишком много попыток. Попробуйте через 15 минут." }, {
+        "Retry-After": String(Math.max(1, Math.ceil((failure.resetAt - Date.now()) / 1000))),
+      });
+      return;
+    }
+
+    const payload = await readJson(req);
+    const password = isPlainObject(payload) && typeof payload.password === "string"
+      ? payload.password
+      : "";
+    if (!safeEqual(password, SURVEY_PASSWORD)) {
+      recordSurveyAuthFailure(req);
+      sendError(res, 401, "Неверный пароль");
+      return;
+    }
+
+    clearSurveyAuthFailures(req);
+    sendJson(res, 200, { ok: true }, { "Set-Cookie": surveyAccessCookie(req) });
+    return;
+  }
+
   const analyticsRoute = url.pathname === "/analytics"
     || url.pathname.startsWith("/analytics/")
     || url.pathname.startsWith("/api/analytics/");
@@ -360,6 +479,11 @@ async function handleRequest(req, res) {
 
   const responseMatch = url.pathname.match(/^\/api\/responses\/([a-zA-Z0-9_-]{20,96})$/);
   if (req.method === "PUT" && responseMatch) {
+    if (!hasSurveyAccess(req)) {
+      sendError(res, 401, "Введите пароль для доступа к анкете");
+      return;
+    }
+
     const id = responseMatch[1];
     if (!isResponseId(id)) {
       sendError(res, 400, "Некорректный идентификатор анкеты");

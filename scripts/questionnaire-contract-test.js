@@ -6,10 +6,14 @@ const vm = require("node:vm");
 
 const projectDir = path.resolve(__dirname, "..");
 const appSource = fs.readFileSync(path.join(projectDir, "public", "app.js"), "utf8");
+const indexSource = fs.readFileSync(path.join(projectDir, "public", "index.html"), "utf8");
+const accessSource = fs.readFileSync(path.join(projectDir, "public", "access.html"), "utf8");
 const analyticsSource = fs.readFileSync(path.join(projectDir, "public", "analytics", "schema.js"), "utf8");
+const serverSource = fs.readFileSync(path.join(projectDir, "server.js"), "utf8");
 const context = { window: {} };
 vm.runInNewContext(analyticsSource, context, { filename: "analytics/schema.js" });
 const schema = context.window.AnalyticsSchema;
+const legacyCompanyHeader = ["Группа", "компаний", "Rubytech"].join(" ");
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
@@ -60,6 +64,14 @@ const appContracts = [
 for (const contract of appContracts) assert(appSource.includes(contract), `missing_app_contract:${contract}`);
 assert(!appSource.includes('code: "A6"'), "removed_a6_still_present");
 assert(!appSource.includes('code: "C5"'), "removed_c5_still_present");
+assert(!indexSource.includes(legacyCompanyHeader), "legacy_company_header_in_survey");
+assert(!accessSource.includes(legacyCompanyHeader), "legacy_company_header_in_access");
+assert(indexSource.includes("Группа Rubytech"), "company_header_missing_in_survey");
+assert(accessSource.includes("Группа Rubytech"), "company_header_missing_in_access");
+assert(accessSource.includes("Введите пароль"), "survey_access_screen_missing");
+assert(serverSource.includes('url.pathname === "/api/survey/unlock"'), "survey_unlock_route_missing");
+assert(serverSource.includes('"HttpOnly"') && serverSource.includes('"SameSite=Strict"'), "survey_cookie_policy_missing");
+assert(serverSource.includes("if (!hasSurveyAccess(req))"), "survey_write_gate_missing");
 
 console.log(JSON.stringify({
   ok: true,

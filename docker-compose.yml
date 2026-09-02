@@ -9,6 +9,8 @@ services:
     environment:
       ANALYTICS_USER: ${ANALYTICS_USER:-}
       ANALYTICS_PASSWORD: ${ANALYTICS_PASSWORD:-}
+      SURVEY_PASSWORD: ${SURVEY_PASSWORD:-}
+      SURVEY_COOKIE_PATH: ${SURVEY_COOKIE_PATH:-/}
       DATA_DIR: /data/responses
       JOURNAL_DIR: /data/journal
     volumes:

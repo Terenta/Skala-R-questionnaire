@@ -8,6 +8,7 @@
 
 - адаптивная анкета с условными ветками, матрицами и множественным выбором;
 - фирменный интерфейс Rubytech с локальными SVG-ассетами и адаптацией от 320 px;
+- отдельный парольный вход в анкету с ограничением частоты неудачных попыток;
 - сохранение после каждого выбора и изменения текста;
 - локальная копия заполнения в браузере;
 - автоматическая повторная отправка после восстановления сети;
@@ -25,7 +26,7 @@
 
 ```text
 Браузер
-  ├─ публичная анкета
+  ├─ парольный вход → анкета
   ├─ localStorage — временная страховка
   └─ PUT /api/responses/:id
              │
@@ -46,9 +47,10 @@
 
 | Маршрут | Назначение |
 |---|---|
-| `/` | анкета |
+| `/` | парольный вход, затем анкета |
 | `/analytics/` | дашборд аналитики, защищённый Basic Auth |
 | `/health` | проверка процесса и доступности хранилища |
+| `POST /api/survey/unlock` | проверка пароля анкеты и выдача HttpOnly-cookie |
 | `PUT /api/responses/:id` | автосохранение анкеты |
 | `GET /api/analytics/responses` | данные для аналитики, защищены Basic Auth |
 
@@ -69,7 +71,7 @@ cd Skala-R-questionnaire
 cp .env.example .env
 ```
 
-Сгенерируйте пароль аналитики:
+Сгенерируйте два независимых пароля — для анкеты и для аналитики:
 
 ```bash
 openssl rand -base64 36
@@ -80,6 +82,8 @@ openssl rand -base64 36
 ```dotenv
 ANALYTICS_USER=analytics
 ANALYTICS_PASSWORD=replace-with-a-long-random-password
+SURVEY_PASSWORD=replace-with-another-long-random-password
+SURVEY_COOKIE_PATH=/
 SURVEY_PORT=3000
 ```
 
@@ -111,7 +115,7 @@ cp .env.example .env
 chmod 600 .env
 ```
 
-Укажите собственные секреты в `.env`, затем выполните:
+Укажите собственные секреты в `.env`. Не добавляйте этот файл в Git и передавайте пароли отдельно от репозитория. Затем выполните:
 
 ```bash
 docker compose up -d --build
@@ -138,6 +142,14 @@ curl -fsS http://127.0.0.1:3000/health
 
 - Caddy: `handle_path /reputation/*`;
 - Nginx: `location /reputation/` и `proxy_pass http://127.0.0.1:3000/`.
+
+Путь cookie должен совпадать с внешним URL. Для отдельного домена оставьте `SURVEY_COOKIE_PATH=/`, а для текущего варианта по префиксу задайте в production `.env`:
+
+```dotenv
+SURVEY_COOKIE_PATH=/reputation/
+```
+
+Пароль анкеты и Basic Auth аналитики должны использоваться только через HTTPS: при обычном HTTP секреты передаются по сети без шифрования.
 
 После настройки проверьте:
 
@@ -288,6 +300,7 @@ docker exec reputation-survey node /app/scripts/audit-data.js
 ```bash
 node --check server.js
 node --check public/app.js
+node --check public/access.js
 node scripts/questionnaire-contract-test.js
 node scripts/smoke-test.js
 ```
@@ -302,11 +315,13 @@ node scripts/reliability-test.js
 
 `scripts/seed-test-responses.js` создаёт или обновляет ровно 50 демонстрационных ответов с зарезервированными идентификаторами `test-reputation-analytics-*`. Скрипт отказывается перезаписывать запись, если она не помечена как тестовая. На production запускайте его только осознанно и после резервного снимка.
 
-`scripts/remote-reliability-test.js` создаёт запись на указанном удалённом сервере. Используйте его только на staging или удаляйте созданную тестовую запись после проверки.
+`scripts/remote-reliability-test.js` создаёт запись на указанном удалённом сервере и требует `BASE_URL`, `SURVEY_PASSWORD`, `ANALYTICS_USER`, `ANALYTICS_PASSWORD`. Используйте его только на staging или удаляйте созданную тестовую запись после проверки.
 
 ## Приёмочный чек-лист
 
-- [ ] анкета открывается по production URL;
+- [ ] без пароля по production URL показывается только экран входа;
+- [ ] неверный пароль отклоняется, корректный открывает анкету;
+- [ ] API автосохранения без cookie возвращает `401`;
 - [ ] после каждого выбора revision на сервере увеличивается;
 - [ ] текст сохраняется после короткой паузы;
 - [ ] заполнение восстанавливается после перезагрузки;
@@ -348,7 +363,7 @@ docker-compose.shared-network.yml  подключение к Docker reverse prox
 
 ## Важные ограничения
 
-- Basic Auth безопасно использовать только через HTTPS.
+- Пароль анкеты и Basic Auth аналитики безопасно использовать только через HTTPS.
 - Локальный `localStorage` — страховка, а не основное хранилище.
 - Основное хранилище — Docker volume; его нельзя удалять при обновлении.
 - Для защиты от полной потери сервера нужен внешний бэкап.

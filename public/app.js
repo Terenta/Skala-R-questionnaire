@@ -593,6 +593,10 @@
       .catch(() => undefined)
       .then(async () => {
         const response = await sendPayload(payload);
+        if (response.status === 401) {
+          window.location.reload();
+          throw new Error("survey_access_required");
+        }
         if (!response.ok) throw new Error(`save_failed_${response.status}`);
         const result = await response.json();
         if (Number(result.revision) >= state.lastSavedRevision) {
